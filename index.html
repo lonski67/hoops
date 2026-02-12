@@ -37,10 +37,11 @@ const BALL_COLORS = [
 ];
 
 const TEAMS = [
+  { key: 'warriors',  name: 'Warriors',  primary: 0x1D428A, secondary: 0xFFC72C, league: 'NBA' },
+  { key: 'valkyries', name: 'Valkyries', primary: 0x5B2C82, secondary: 0xA8D8EA, league: 'WNBA' },
   { key: 'lakers',    name: 'Lakers',    primary: 0x552583, secondary: 0xFDB927, league: 'NBA' },
   { key: 'celtics',   name: 'Celtics',   primary: 0x007A33, secondary: 0xFFFFFF, league: 'NBA' },
   { key: 'bulls',     name: 'Bulls',     primary: 0xCE1141, secondary: 0x000000, league: 'NBA' },
-  { key: 'warriors',  name: 'Warriors',  primary: 0x1D428A, secondary: 0xFFC72C, league: 'NBA' },
   { key: 'heat',      name: 'Heat',      primary: 0x98002E, secondary: 0xF9A01B, league: 'NBA' },
   { key: 'nets',      name: 'Nets',      primary: 0x000000, secondary: 0xFFFFFF, league: 'NBA' },
   { key: 'aces',      name: 'Aces',      primary: 0xA6192E, secondary: 0x000000, league: 'WNBA' },
@@ -49,7 +50,6 @@ const TEAMS = [
   { key: 'sun',       name: 'Sun',       primary: 0xF05023, secondary: 0x002D62, league: 'WNBA' },
   { key: 'lynx',      name: 'Lynx',      primary: 0x266092, secondary: 0x79BC43, league: 'WNBA' },
   { key: 'mercury',   name: 'Mercury',   primary: 0xE56020, secondary: 0x1D1160, league: 'WNBA' },
-  { key: 'valkyries', name: 'Valkyries', primary: 0x5B2C82, secondary: 0xA8D8EA, league: 'WNBA' },
 ];
 
 const COURTS = [
@@ -946,7 +946,15 @@ class PlayerCustomizeScene extends Phaser.Scene {
       const playerLeague = TEAMS[this.teamIndex].league;
       const oppositeLeague = TEAMS.filter((t, i) => t.league !== playerLeague);
       if (oppositeLeague.length > 0) {
-        GameState.opponentTeam = oppositeLeague[Math.floor(Math.random() * oppositeLeague.length)];
+        // Prefer Valkyries vs Warriors matchup, otherwise random from opposite league
+        const playerKey = TEAMS[this.teamIndex].key;
+        if (playerKey === 'warriors') {
+          GameState.opponentTeam = TEAMS.find(t => t.key === 'valkyries') || oppositeLeague[0];
+        } else if (playerKey === 'valkyries') {
+          GameState.opponentTeam = TEAMS.find(t => t.key === 'warriors') || oppositeLeague[0];
+        } else {
+          GameState.opponentTeam = oppositeLeague[Math.floor(Math.random() * oppositeLeague.length)];
+        }
       } else {
         let oppIdx = (this.teamIndex + 3) % TEAMS.length;
         GameState.opponentTeam = TEAMS[oppIdx];

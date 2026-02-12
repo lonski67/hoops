@@ -2121,7 +2121,7 @@ class GameOverScene extends Phaser.Scene {
     } else {
       // --- LOSS: Sad face ---
       this.generateSadFaceTexture();
-      const sadFace = this.add.image(GAME_W / 2, 105, 'sad_face').setScale(2);
+      const sadFace = this.add.image(GAME_W / 2, 90, 'sad_face').setScale(2.5);
 
       // Slow gentle sway
       this.tweens.add({
@@ -2133,14 +2133,15 @@ class GameOverScene extends Phaser.Scene {
         ease: 'Sine.easeInOut'
       });
 
-      // Player sprite looking dejected
+      // Player sprite looking dejected, below the sad face
       const spriteKey = `player_${GameState.playerGender}_${GameState.playerTeam.key}`;
-      const p1 = this.add.sprite(GAME_W / 2, 130, spriteKey, 0).setScale(2);
+      const p1 = this.add.sprite(GAME_W / 2 - 30, 140, spriteKey, 0).setScale(2);
+      const p2 = this.add.sprite(GAME_W / 2 + 30, 140, spriteKey, 0).setScale(2).setFlipX(true);
 
       // Slow head-down bob
       this.tweens.add({
-        targets: p1,
-        y: { from: 130, to: 132 },
+        targets: [p1, p2],
+        y: { from: 140, to: 142 },
         duration: 1500,
         yoyo: true,
         repeat: -1,
@@ -2149,23 +2150,24 @@ class GameOverScene extends Phaser.Scene {
     }
 
     // Score
-    this.add.text(GAME_W / 2, 160, `${GameState.teamAScore} - ${GameState.teamBScore}`, {
+    const scoreY = playerWon ? 160 : 172;
+    this.add.text(GAME_W / 2, scoreY, `${GameState.teamAScore} - ${GameState.teamBScore}`, {
       fontSize: '20px', fontFamily: 'monospace', color: '#FFFFFF',
       stroke: '#000', strokeThickness: 4
     }).setOrigin(0.5);
 
-    this.add.text(GAME_W / 2, 182, `${GameState.playerTeam.name} vs ${GameState.opponentTeam.name}`, {
+    this.add.text(GAME_W / 2, scoreY + 22, `${GameState.playerTeam.name} vs ${GameState.opponentTeam.name}`, {
       fontSize: '10px', fontFamily: 'monospace', color: '#AAAAAA'
     }).setOrigin(0.5);
 
     // Buttons
-    const playAgain = this.add.text(GAME_W / 2, 210, 'PLAY AGAIN', {
+    const playAgain = this.add.text(GAME_W / 2, scoreY + 48, 'PLAY AGAIN', {
       fontSize: '14px', fontFamily: 'monospace', color: '#000', backgroundColor: '#FFD700',
       padding: { x: 12, y: 6 }
     }).setOrigin(0.5).setInteractive();
     playAgain.on('pointerdown', () => { sfx.play('click'); this.scene.start('GameScene'); });
 
-    const mainMenu = this.add.text(GAME_W / 2, 248, 'MAIN MENU', {
+    const mainMenu = this.add.text(GAME_W / 2, scoreY + 78, 'MAIN MENU', {
       fontSize: '12px', fontFamily: 'monospace', color: '#AAAAAA'
     }).setOrigin(0.5).setInteractive();
     mainMenu.on('pointerdown', () => { sfx.play('click'); this.scene.start('TitleScene'); });

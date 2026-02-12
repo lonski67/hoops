@@ -1,0 +1,2117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Hoops</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; overflow: hidden; }
+    canvas {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      image-rendering: -moz-crisp-edges;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+<script>
+// ============================================================
+// SECTION 1: CONSTANTS & CONFIGURATION
+// ============================================================
+
+const GAME_W = 480;
+const GAME_H = 270;
+const TARGET_SCORE = 20;
+const SHOT_CLOCK_MAX = 12;
+
+const BALL_COLORS = [
+  { key: 'ball_orange',    name: 'Classic Orange', base: 0xFF6600, seam: 0xCC4400 },
+  { key: 'ball_golden',    name: 'Golden',         base: 0xFFD700, seam: 0xCCAA00 },
+  { key: 'ball_hotpink',   name: 'Hot Pink',       base: 0xFF69B4, seam: 0xCC4488 },
+  { key: 'ball_purple',    name: 'Purple',         base: 0x8B00FF, seam: 0x6600CC },
+  { key: 'ball_turquoise', name: 'Turquoise',      base: 0x40E0D0, seam: 0x2BA89E },
+  { key: 'ball_neon',      name: 'Neon Green',     base: 0x39FF14, seam: 0x2ACC10 },
+];
+
+const TEAMS = [
+  { key: 'lakers',    name: 'Lakers',    primary: 0x552583, secondary: 0xFDB927, league: 'NBA' },
+  { key: 'celtics',   name: 'Celtics',   primary: 0x007A33, secondary: 0xFFFFFF, league: 'NBA' },
+  { key: 'bulls',     name: 'Bulls',     primary: 0xCE1141, secondary: 0x000000, league: 'NBA' },
+  { key: 'warriors',  name: 'Warriors',  primary: 0x1D428A, secondary: 0xFFC72C, league: 'NBA' },
+  { key: 'heat',      name: 'Heat',      primary: 0x98002E, secondary: 0xF9A01B, league: 'NBA' },
+  { key: 'nets',      name: 'Nets',      primary: 0x000000, secondary: 0xFFFFFF, league: 'NBA' },
+  { key: 'aces',      name: 'Aces',      primary: 0xA6192E, secondary: 0x000000, league: 'WNBA' },
+  { key: 'storm',     name: 'Storm',     primary: 0x2C5234, secondary: 0xFFC425, league: 'WNBA' },
+  { key: 'liberty',   name: 'Liberty',   primary: 0x6ECDB2, secondary: 0x000000, league: 'WNBA' },
+  { key: 'sun',       name: 'Sun',       primary: 0xF05023, secondary: 0x002D62, league: 'WNBA' },
+  { key: 'lynx',      name: 'Lynx',      primary: 0x266092, secondary: 0x79BC43, league: 'WNBA' },
+  { key: 'mercury',   name: 'Mercury',   primary: 0xE56020, secondary: 0x1D1160, league: 'WNBA' },
+  { key: 'valkyries', name: 'Valkyries', primary: 0x5B2C82, secondary: 0xA8D8EA, league: 'WNBA' },
+];
+
+const COURTS = [
+  { key: 'paris',         name: 'Paris',         color: 0xCD853F, paint: 0x552583 },
+  { key: 'san_francisco', name: 'San Francisco', color: 0xC19A6B, paint: 0xCE1141 },
+  { key: 'berlin',        name: 'Berlin',        color: 0xA0826D, paint: 0x1D428A },
+  { key: 'tokyo',         name: 'Tokyo',         color: 0xDEB887, paint: 0xCE1141 },
+  { key: 'rio',           name: 'Rio',           color: 0xD2B48C, paint: 0x007A33 },
+  { key: 'new_york',      name: 'New York',      color: 0xBC8F8F, paint: 0x000000 },
+];
+
+const COURT = {
+  LEFT: 40, RIGHT: 440, TOP: 15, BOTTOM: 255,
+  RIM_X: 240, RIM_Y: 30,
+  THREE_PT_RADIUS: 110,
+  FT_LINE_Y: 100,
+  PAINT_LEFT: 200, PAINT_RIGHT: 280, PAINT_TOP: 30, PAINT_BOTTOM: 100,
+  HALFCOURT_Y: 240,
+  CENTER_X: 240,
+};
+
+const SKIN_TONES = [0xF5D0A9, 0xD2A06B, 0x8D5524, 0x6B3A19];
+
+// ============================================================
+// SECTION 2: GAME STATE
+// ============================================================
+
+const GameState = {
+  teamAScore: 0, teamBScore: 0,
+  possession: 'teamA',
+  ballHolder: null,
+  phase: 'DEAD_BALL', // LIVE_PLAY, DEAD_BALL, FREE_THROW, INBOUND, CHECK_BALL
+  shotClock: SHOT_CLOCK_MAX,
+  teamAFouls: 0, teamBFouls: 0,
+  selectedBall: BALL_COLORS[0],
+  playerGender: 'boy',
+  playerTeam: TEAMS[0],
+  opponentTeam: TEAMS[2],
+  courtKey: COURTS[0],
+  isTouchDevice: false,
+};
+
+// ============================================================
+// SECTION 3: PROCEDURAL ASSET GENERATION
+// ============================================================
+
+function generateBallTexture(scene, key, baseColor, seamColor) {
+  const s = 16;
+  const c = document.createElement('canvas');
+  c.width = s; c.height = s;
+  const ctx = c.getContext('2d');
+  // base circle
+  ctx.fillStyle = '#' + baseColor.toString(16).padStart(6, '0');
+  ctx.beginPath(); ctx.arc(8, 8, 7, 0, Math.PI * 2); ctx.fill();
+  // highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.beginPath(); ctx.arc(6, 5, 3, 0, Math.PI * 2); ctx.fill();
+  // seams
+  ctx.strokeStyle = '#' + seamColor.toString(16).padStart(6, '0');
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(1, 8); ctx.lineTo(15, 8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, 1); ctx.lineTo(8, 15); ctx.stroke();
+  ctx.beginPath(); ctx.arc(8, 8, 5, 0, Math.PI * 2); ctx.stroke();
+  scene.textures.addCanvas(key, c);
+}
+
+function generatePlayerTexture(scene, key, gender, primaryColor, secondaryColor, skinTone) {
+  const fw = 16, fh = 24, frames = 8;
+  const c = document.createElement('canvas');
+  c.width = fw * frames; c.height = fh;
+  const ctx = c.getContext('2d');
+  const skin = '#' + skinTone.toString(16).padStart(6, '0');
+  const pri = '#' + primaryColor.toString(16).padStart(6, '0');
+  const sec = '#' + secondaryColor.toString(16).padStart(6, '0');
+
+  for (let f = 0; f < frames; f++) {
+    const ox = f * fw;
+    // Head
+    ctx.fillStyle = skin;
+    ctx.fillRect(ox + 5, 0, 6, 6);
+    // Hair
+    ctx.fillStyle = gender === 'girl' ? '#3A1A00' : '#1A1A1A';
+    if (gender === 'girl') {
+      ctx.fillRect(ox + 4, 0, 8, 3);
+      ctx.fillRect(ox + 3, 1, 2, 5);
+      ctx.fillRect(ox + 11, 1, 2, 5);
+    } else {
+      ctx.fillRect(ox + 5, 0, 6, 2);
+    }
+    // Eyes
+    ctx.fillStyle = '#000';
+    ctx.fillRect(ox + 6, 3, 1, 1);
+    ctx.fillRect(ox + 9, 3, 1, 1);
+    // Jersey
+    ctx.fillStyle = pri;
+    ctx.fillRect(ox + 4, 7, 8, 8);
+    // Jersey number/stripe
+    ctx.fillStyle = sec;
+    ctx.fillRect(ox + 6, 9, 4, 4);
+    // Shorts
+    ctx.fillStyle = sec;
+    ctx.fillRect(ox + 5, 15, 6, 4);
+
+    // Legs - vary by frame for animation
+    ctx.fillStyle = skin;
+    const legOffset = (f >= 2 && f <= 5) ? Math.floor(Math.sin(f * 1.5) * 2) : 0;
+    ctx.fillRect(ox + 5 + legOffset, 19, 2, 4);
+    ctx.fillRect(ox + 9 - legOffset, 19, 2, 4);
+
+    // Shoes
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(ox + 4 + legOffset, 23, 3, 1);
+    ctx.fillRect(ox + 9 - legOffset, 23, 3, 1);
+
+    // Arms - vary for shoot frame
+    ctx.fillStyle = skin;
+    if (f === 6) { // shooting
+      ctx.fillRect(ox + 2, 5, 2, 3);
+      ctx.fillRect(ox + 12, 5, 2, 3);
+    } else {
+      ctx.fillRect(ox + 2, 8, 2, 5);
+      ctx.fillRect(ox + 12, 8, 2, 5);
+    }
+  }
+
+  const tex = scene.textures.addCanvas(key, c);
+  tex.add('__BASE', 0, 0, 0, fw * frames, fh);
+  for (let f = 0; f < frames; f++) {
+    tex.add(f, 0, f * fw, 0, fw, fh);
+  }
+}
+
+function generateCourtTexture(scene, key, courtColor, paintColor) {
+  const c = document.createElement('canvas');
+  c.width = GAME_W; c.height = GAME_H;
+  const ctx = c.getContext('2d');
+
+  // Court floor
+  const cc = '#' + courtColor.toString(16).padStart(6, '0');
+  ctx.fillStyle = cc;
+  ctx.fillRect(COURT.LEFT, COURT.TOP, COURT.RIGHT - COURT.LEFT, COURT.BOTTOM - COURT.TOP);
+
+  // Wood grain lines (subtle)
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 1;
+  for (let y = COURT.TOP; y < COURT.BOTTOM; y += 8) {
+    ctx.beginPath(); ctx.moveTo(COURT.LEFT, y); ctx.lineTo(COURT.RIGHT, y); ctx.stroke();
+  }
+
+  // Paint area
+  const pc = '#' + paintColor.toString(16).padStart(6, '0');
+  ctx.fillStyle = pc;
+  ctx.globalAlpha = 0.3;
+  ctx.fillRect(COURT.PAINT_LEFT, COURT.PAINT_TOP, COURT.PAINT_RIGHT - COURT.PAINT_LEFT, COURT.PAINT_BOTTOM - COURT.PAINT_TOP);
+  ctx.globalAlpha = 1.0;
+
+  // Court lines
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  // Boundary
+  ctx.strokeRect(COURT.LEFT, COURT.TOP, COURT.RIGHT - COURT.LEFT, COURT.BOTTOM - COURT.TOP);
+  // Paint/key outline
+  ctx.strokeRect(COURT.PAINT_LEFT, COURT.PAINT_TOP, COURT.PAINT_RIGHT - COURT.PAINT_LEFT, COURT.PAINT_BOTTOM - COURT.PAINT_TOP);
+  // Free throw line
+  ctx.beginPath(); ctx.moveTo(COURT.PAINT_LEFT, COURT.FT_LINE_Y); ctx.lineTo(COURT.PAINT_RIGHT, COURT.FT_LINE_Y); ctx.stroke();
+  // Free throw circle
+  ctx.beginPath(); ctx.arc(COURT.CENTER_X, COURT.FT_LINE_Y, 20, 0, Math.PI); ctx.stroke();
+  // Three-point arc
+  ctx.beginPath(); ctx.arc(COURT.RIM_X, COURT.RIM_Y, COURT.THREE_PT_RADIUS, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  // Half court line
+  ctx.beginPath(); ctx.moveTo(COURT.LEFT, COURT.HALFCOURT_Y); ctx.lineTo(COURT.RIGHT, COURT.HALFCOURT_Y); ctx.stroke();
+  // Half court circle
+  ctx.beginPath(); ctx.arc(COURT.CENTER_X, COURT.HALFCOURT_Y, 25, Math.PI, 2 * Math.PI); ctx.stroke();
+
+  // Basket
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(COURT.RIM_X - 12, COURT.RIM_Y - 8, 24, 3); // backboard
+  ctx.strokeStyle = '#FF6600';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(COURT.RIM_X, COURT.RIM_Y, 5, 0, Math.PI * 2); ctx.stroke(); // rim
+  // Net lines
+  ctx.strokeStyle = '#CCCCCC';
+  ctx.lineWidth = 1;
+  for (let i = -4; i <= 4; i += 2) {
+    ctx.beginPath(); ctx.moveTo(COURT.RIM_X + i, COURT.RIM_Y + 5); ctx.lineTo(COURT.RIM_X + i * 0.5, COURT.RIM_Y + 12); ctx.stroke();
+  }
+
+  scene.textures.addCanvas(key, c);
+}
+
+function generateBackgroundTexture(scene, courtData) {
+  const c = document.createElement('canvas');
+  c.width = GAME_W; c.height = GAME_H;
+  const ctx = c.getContext('2d');
+
+  const key = courtData.key;
+  if (key === 'paris') drawParis(ctx);
+  else if (key === 'san_francisco') drawSanFrancisco(ctx);
+  else if (key === 'berlin') drawBerlin(ctx);
+  else if (key === 'tokyo') drawTokyo(ctx);
+  else if (key === 'rio') drawRio(ctx);
+  else if (key === 'new_york') drawNewYork(ctx);
+
+  scene.textures.addCanvas('bg_' + key, c);
+}
+
+function drawParis(ctx) {
+  // Sky gradient - sunset
+  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
+  grad.addColorStop(0, '#FF9966'); grad.addColorStop(0.5, '#FFB88C'); grad.addColorStop(1, '#87CEEB');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
+  // Buildings
+  ctx.fillStyle = '#4A3728';
+  for (let x = 0; x < GAME_W; x += 30) {
+    const h = 20 + Math.random() * 40;
+    ctx.fillRect(x, GAME_H - h - 30, 25, h);
+    // Windows
+    ctx.fillStyle = '#FFE4A0';
+    for (let wy = GAME_H - h - 25; wy < GAME_H - 35; wy += 8) {
+      for (let wx = x + 3; wx < x + 22; wx += 6) {
+        ctx.fillRect(wx, wy, 3, 4);
+      }
+    }
+    ctx.fillStyle = '#4A3728';
+  }
+  // Eiffel Tower
+  const tx = 360, tb = GAME_H - 30;
+  ctx.fillStyle = '#5C4033';
+  // Main structure
+  ctx.beginPath(); ctx.moveTo(tx, 10); ctx.lineTo(tx - 35, tb); ctx.lineTo(tx - 30, tb); ctx.lineTo(tx, 50); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(tx, 10); ctx.lineTo(tx + 35, tb); ctx.lineTo(tx + 30, tb); ctx.lineTo(tx, 50); ctx.fill();
+  // Platforms
+  ctx.fillRect(tx - 30, 80, 60, 4);
+  ctx.fillRect(tx - 20, 50, 40, 3);
+  ctx.fillRect(tx - 10, 25, 20, 2);
+  // Ground
+  ctx.fillStyle = '#6B8E5A';
+  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
+}
+
+function drawSanFrancisco(ctx) {
+  // Foggy sky
+  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
+  grad.addColorStop(0, '#A0B4C8'); grad.addColorStop(0.6, '#C8D8E4'); grad.addColorStop(1, '#87CEEB');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
+  // Hills
+  ctx.fillStyle = '#5A7D4A';
+  ctx.beginPath(); ctx.moveTo(0, 180); ctx.quadraticCurveTo(120, 100, 240, 160); ctx.quadraticCurveTo(360, 120, GAME_W, 170); ctx.lineTo(GAME_W, GAME_H); ctx.lineTo(0, GAME_H); ctx.fill();
+  // Water
+  ctx.fillStyle = '#3A6B8C';
+  ctx.fillRect(0, GAME_H - 50, GAME_W, 50);
+  // Golden Gate Bridge
+  ctx.fillStyle = '#C0392B';
+  // Towers
+  ctx.fillRect(140, 40, 8, 140);
+  ctx.fillRect(300, 40, 8, 140);
+  // Road deck
+  ctx.fillRect(100, 130, 250, 8);
+  // Cables
+  ctx.strokeStyle = '#C0392B'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(144, 45); ctx.quadraticCurveTo(222, 115, 304, 45); ctx.stroke();
+  // Ground
+  ctx.fillStyle = '#5A7D4A';
+  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
+}
+
+function drawBerlin(ctx) {
+  // Overcast sky
+  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
+  grad.addColorStop(0, '#8899AA'); grad.addColorStop(1, '#AABBCC');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
+  // Buildings
+  ctx.fillStyle = '#6A6A6A';
+  for (let x = 0; x < GAME_W; x += 35) {
+    const h = 30 + Math.random() * 50;
+    ctx.fillRect(x, GAME_H - h - 30, 30, h);
+  }
+  // Brandenburg Gate
+  const gx = 200, gb = GAME_H - 30;
+  ctx.fillStyle = '#D4C5A0';
+  // Columns
+  for (let i = 0; i < 6; i++) { ctx.fillRect(gx + i * 14, gb - 70, 8, 70); }
+  // Top beam
+  ctx.fillRect(gx - 2, gb - 75, 86, 8);
+  // Quadriga
+  ctx.fillStyle = '#B8A060';
+  ctx.fillRect(gx + 25, gb - 88, 30, 13);
+  ctx.fillRect(gx + 35, gb - 95, 10, 7);
+  // Ground
+  ctx.fillStyle = '#7A7A6A';
+  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
+}
+
+function drawTokyo(ctx) {
+  // Dusk sky
+  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
+  grad.addColorStop(0, '#2B1055'); grad.addColorStop(0.4, '#D65DB1'); grad.addColorStop(0.7, '#FF6F61'); grad.addColorStop(1, '#FFC75F');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
+  // City skyline
+  ctx.fillStyle = '#1A1A2E';
+  for (let x = 0; x < GAME_W; x += 20) {
+    const h = 30 + Math.random() * 60;
+    ctx.fillRect(x, GAME_H - h - 30, 16, h);
+    // Lit windows
+    ctx.fillStyle = '#FFE066';
+    for (let wy = GAME_H - h - 25; wy < GAME_H - 35; wy += 6) {
+      if (Math.random() > 0.3) ctx.fillRect(x + 3, wy, 2, 3);
+      if (Math.random() > 0.3) ctx.fillRect(x + 8, wy, 2, 3);
+      if (Math.random() > 0.3) ctx.fillRect(x + 13, wy, 2, 3);
+    }
+    ctx.fillStyle = '#1A1A2E';
+  }
+  // Tokyo Tower
+  const tx = 100, tb = GAME_H - 30;
+  ctx.fillStyle = '#FF4444';
+  ctx.beginPath(); ctx.moveTo(tx, 15); ctx.lineTo(tx - 25, tb); ctx.lineTo(tx - 20, tb); ctx.lineTo(tx, 45); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(tx, 15); ctx.lineTo(tx + 25, tb); ctx.lineTo(tx + 20, tb); ctx.lineTo(tx, 45); ctx.fill();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(tx - 18, 70, 36, 4);
+  ctx.fillRect(tx - 22, 120, 44, 4);
+  ctx.fillRect(tx - 12, 45, 24, 3);
+  // Cherry blossom
+  ctx.fillStyle = '#FFB7C5';
+  for (let i = 0; i < 30; i++) {
+    ctx.beginPath(); ctx.arc(380 + Math.random() * 80, 60 + Math.random() * 80, 2, 0, Math.PI * 2); ctx.fill();
+  }
+  // Ground
+  ctx.fillStyle = '#2A2A3A';
+  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
+}
+
+function drawRio(ctx) {
+  // Bright blue sky
+  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
+  grad.addColorStop(0, '#1E90FF'); grad.addColorStop(0.6, '#87CEEB'); grad.addColorStop(1, '#E0F7FF');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
+  // Clouds
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath(); ctx.arc(80, 40, 20, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(100, 35, 15, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(350, 50, 18, 0, Math.PI * 2); ctx.fill();
+  // Mountain (Corcovado)
+  ctx.fillStyle = '#2E8B57';
+  ctx.beginPath(); ctx.moveTo(280, GAME_H - 30); ctx.lineTo(350, 30); ctx.lineTo(420, GAME_H - 30); ctx.fill();
+  // Christ the Redeemer
+  ctx.fillStyle = '#E8E8E8';
+  ctx.fillRect(348, 18, 4, 14); // body
+  ctx.fillRect(338, 22, 24, 4); // arms
+  ctx.fillRect(348, 14, 4, 5);  // head
+  // Beach
+  ctx.fillStyle = '#F4E3B2';
+  ctx.fillRect(0, GAME_H - 40, GAME_W, 10);
+  // Ocean
+  ctx.fillStyle = '#1E90FF';
+  ctx.fillRect(0, GAME_H - 50, 280, 20);
+  // Ground
+  ctx.fillStyle = '#6B8E5A';
+  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
+}
+
+function drawNewYork(ctx) {
+  // Sunset sky
+  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
+  grad.addColorStop(0, '#FF6B35'); grad.addColorStop(0.4, '#FFA07A'); grad.addColorStop(1, '#FFD700');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
+  // Manhattan skyline
+  ctx.fillStyle = '#2C2C2C';
+  const heights = [80, 60, 100, 70, 130, 90, 75, 110, 65, 85, 95, 55, 120, 70, 80, 60];
+  for (let i = 0; i < heights.length; i++) {
+    ctx.fillRect(i * 30, GAME_H - heights[i] - 30, 26, heights[i]);
+  }
+  // Empire State-ish
+  ctx.fillRect(130, GAME_H - 160, 20, 130);
+  ctx.fillRect(135, GAME_H - 175, 10, 15);
+  ctx.fillRect(138, GAME_H - 185, 4, 10);
+  // Windows
+  ctx.fillStyle = '#FFE066';
+  for (let i = 0; i < heights.length; i++) {
+    for (let wy = GAME_H - heights[i] - 25; wy < GAME_H - 35; wy += 6) {
+      for (let wx = i * 30 + 3; wx < i * 30 + 23; wx += 5) {
+        if (Math.random() > 0.3) ctx.fillRect(wx, wy, 2, 3);
+      }
+    }
+  }
+  // Water
+  ctx.fillStyle = '#3A5F8A';
+  ctx.fillRect(0, GAME_H - 40, GAME_W, 10);
+  // Ground
+  ctx.fillStyle = '#5A5A5A';
+  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
+}
+
+function generateShadowTexture(scene) {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 8;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(8, 4, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
+  scene.textures.addCanvas('shadow', c);
+}
+
+function generateHoopTexture(scene) {
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 20;
+  const ctx = c.getContext('2d');
+  // Backboard
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(4, 0, 24, 8);
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(4, 0, 24, 8);
+  // Rim
+  ctx.strokeStyle = '#FF6600';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(16, 12, 5, 0, Math.PI * 2); ctx.stroke();
+  // Net
+  ctx.strokeStyle = '#CCCCCC';
+  ctx.lineWidth = 1;
+  for (let i = -4; i <= 4; i += 2) {
+    ctx.beginPath(); ctx.moveTo(16 + i, 17); ctx.lineTo(16 + i * 0.5, 20); ctx.stroke();
+  }
+  scene.textures.addCanvas('hoop', c);
+}
+
+function generateArrowTexture(scene) {
+  const c = document.createElement('canvas');
+  c.width = 10; c.height = 6;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#FFFF00';
+  ctx.beginPath();
+  ctx.moveTo(5, 0); ctx.lineTo(10, 6); ctx.lineTo(0, 6);
+  ctx.closePath(); ctx.fill();
+  scene.textures.addCanvas('arrow', c);
+}
+
+function generateLogoTexture(scene, team) {
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 32;
+  const ctx = c.getContext('2d');
+  const pri = '#' + team.primary.toString(16).padStart(6, '0');
+  const sec = '#' + team.secondary.toString(16).padStart(6, '0');
+  // Simple circle logo
+  ctx.fillStyle = pri;
+  ctx.beginPath(); ctx.arc(16, 16, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = sec;
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(team.name.substring(0, 2).toUpperCase(), 16, 16);
+  ctx.strokeStyle = sec; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(16, 16, 14, 0, Math.PI * 2); ctx.stroke();
+  scene.textures.addCanvas('logo_' + team.key, c);
+}
+
+// ============================================================
+// SECTION 4: SOUND SYNTHESIZER
+// ============================================================
+
+class SoundFX {
+  constructor() {
+    this.ctx = null;
+    this.enabled = true;
+  }
+
+  init() {
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch(e) { this.enabled = false; }
+  }
+
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
+  play(type) {
+    if (!this.enabled || !this.ctx) return;
+    this.resume();
+    const t = this.ctx.currentTime;
+    switch(type) {
+      case 'dribble': this._tone(120, 0.05, 'sine', t); break;
+      case 'swish': this._noise(0.15, t); this._tone(800, 0.1, 'sine', t); break;
+      case 'rim': this._tone(600, 0.15, 'triangle', t); this._tone(400, 0.1, 'triangle', t + 0.05); break;
+      case 'whistle': this._tone(1200, 0.3, 'sine', t); this._tone(1400, 0.2, 'sine', t + 0.1); break;
+      case 'buzzer': this._tone(200, 0.8, 'sawtooth', t); break;
+      case 'click': this._tone(1000, 0.03, 'sine', t); break;
+      case 'score': this._tone(523, 0.1, 'sine', t); this._tone(659, 0.1, 'sine', t + 0.1); this._tone(784, 0.15, 'sine', t + 0.2); break;
+    }
+  }
+
+  _tone(freq, dur, type, time) {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, time);
+    gain.gain.setValueAtTime(0.15, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    osc.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(time); osc.stop(time + dur);
+  }
+
+  _noise(dur, time) {
+    const bufferSize = this.ctx.sampleRate * dur;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.08, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    source.connect(gain); gain.connect(this.ctx.destination);
+    source.start(time); source.stop(time + dur);
+  }
+}
+
+const sfx = new SoundFX();
+
+// ============================================================
+// SECTION 5: AI SYSTEM
+// ============================================================
+
+class AIController {
+  constructor(player, team, role) {
+    this.player = player;
+    this.team = team;
+    this.role = role; // 'guard', 'wing', 'big'
+    this.state = 'IDLE';
+    this.target = { x: 0, y: 0 };
+    this.stateTimer = 0;
+    this.reactionDelay = 0.3 + Math.random() * 0.7;
+    this.decisionTimer = 0;
+  }
+
+  getOffensiveSpot() {
+    switch(this.role) {
+      case 'guard': return { x: COURT.CENTER_X, y: 210 };
+      case 'wing':  return { x: COURT.CENTER_X + (this.player.x > COURT.CENTER_X ? 100 : -100), y: 170 };
+      case 'big':   return { x: COURT.CENTER_X + (this.player.x > COURT.CENTER_X ? 50 : -50), y: 140 };
+    }
+  }
+
+  getDefensiveSpot(assignedMan) {
+    if (!assignedMan) return { x: COURT.CENTER_X, y: 120 };
+    return {
+      x: (assignedMan.x + COURT.RIM_X) / 2,
+      y: (assignedMan.y + COURT.RIM_Y) / 2
+    };
+  }
+
+  update(delta, gameState, allPlayers, ball) {
+    this.stateTimer += delta;
+    this.decisionTimer += delta;
+    if (this.decisionTimer < this.reactionDelay) return;
+
+    const onOffense = gameState.possession === this.team;
+    const hasBall = gameState.ballHolder === this.player;
+    const distToRim = Phaser.Math.Distance.Between(this.player.x, this.player.y, COURT.RIM_X, COURT.RIM_Y);
+
+    if (gameState.phase !== 'LIVE_PLAY') {
+      this.moveToward(this.getOffensiveSpot(), 60);
+      return;
+    }
+
+    if (onOffense) {
+      this.updateOffense(delta, gameState, allPlayers, ball, hasBall, distToRim);
+    } else {
+      this.updateDefense(delta, gameState, allPlayers, ball, distToRim);
+    }
+  }
+
+  updateOffense(delta, gs, allPlayers, ball, hasBall, distToRim) {
+    if (hasBall) {
+      // Has ball - decide to shoot, pass, or drive
+      const isOpen = this.isOpen(allPlayers);
+      if (isOpen && distToRim < 120 && Math.random() < 0.02) {
+        this.shoot(gs, ball);
+      } else if (!isOpen && Math.random() < 0.03) {
+        this.pass(gs, allPlayers, ball);
+      } else {
+        // Drive toward basket but stop at reasonable range
+        const driveTarget = { x: COURT.RIM_X + (Math.random() - 0.5) * 60, y: COURT.RIM_Y + 60 + Math.random() * 30 };
+        this.moveToward(driveTarget, 90);
+      }
+    } else {
+      // Without ball - move to open spot or cut
+      if (Math.random() < 0.005) {
+        // Cut toward basket area but not too close
+        this.target = { x: COURT.RIM_X + (Math.random() - 0.5) * 100, y: COURT.RIM_Y + 70 + Math.random() * 40 };
+      } else if (this.stateTimer > 2) {
+        this.target = this.getOffensiveSpot();
+        // Add some randomness
+        this.target.x += (Math.random() - 0.5) * 40;
+        this.target.y += (Math.random() - 0.5) * 20;
+        this.stateTimer = 0;
+      }
+      this.moveToward(this.target, 70);
+    }
+  }
+
+  updateDefense(delta, gs, allPlayers, ball, distToRim) {
+    // Find assigned man (closest opponent)
+    const opponents = allPlayers.filter(p => p.teamId !== this.team && p.active);
+    let assignedMan = opponents[0];
+    let minDist = Infinity;
+    for (const opp of opponents) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, opp.x, opp.y);
+      if (d < minDist) { minDist = d; assignedMan = opp; }
+    }
+
+    if (assignedMan) {
+      const guardPos = this.getDefensiveSpot(assignedMan);
+      this.moveToward(guardPos, 75);
+
+      // Try to steal if very close to ball handler
+      if (gs.ballHolder && gs.ballHolder.teamId !== this.team) {
+        const distToBallHandler = Phaser.Math.Distance.Between(
+          this.player.x, this.player.y, gs.ballHolder.x, gs.ballHolder.y
+        );
+        if (distToBallHandler < 20 && Math.random() < 0.008) {
+          this.attemptSteal(gs, ball);
+        }
+      }
+    }
+  }
+
+  shoot(gs, ball) {
+    if (!gs.ballHolder || gs.ballHolder !== this.player) return;
+    const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, COURT.RIM_X, COURT.RIM_Y);
+    let prob = 0.45 - (dist / 300) * 0.25;
+    if (!this.isOpen([])) prob -= 0.15;
+    prob = Phaser.Math.Clamp(prob, 0.1, 0.5);
+
+    gs.ballHolder = null;
+    ball.isShot = true;
+    ball.shotBy = this.player;
+    ball.shotFrom = { x: this.player.x, y: this.player.y };
+    ball.made = Math.random() < prob;
+    ball.shotTimer = 0;
+    ball.shotDuration = 0.6 + dist * 0.003;
+    ball.startX = this.player.x;
+    ball.startY = this.player.y;
+    ball.zHeight = 0;
+    sfx.play('dribble');
+  }
+
+  pass(gs, allPlayers, ball) {
+    if (!gs.ballHolder || gs.ballHolder !== this.player) return;
+    const teammates = allPlayers.filter(p => p.teamId === this.team && p !== this.player && p.active);
+    if (teammates.length === 0) return;
+    const target = teammates[Math.floor(Math.random() * teammates.length)];
+    gs.ballHolder = null;
+    ball.isPass = true;
+    ball.passTarget = target;
+    ball.startX = this.player.x;
+    ball.startY = this.player.y;
+    ball.passTimer = 0;
+    ball.passDuration = Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y) / 200;
+  }
+
+  attemptSteal(gs, ball) {
+    if (Math.random() < 0.3) {
+      // Successful steal
+      gs.ballHolder = this.player;
+      gs.possession = this.team;
+      gs.shotClock = SHOT_CLOCK_MAX;
+      sfx.play('click');
+    } else if (Math.random() < 0.4) {
+      // Foul on steal attempt
+      ball.foulOn = gs.ballHolder;
+      ball.fouledBy = this.player;
+    }
+  }
+
+  isOpen(allPlayers) {
+    const opponents = allPlayers.filter(p => p.teamId !== this.team && p.active);
+    for (const opp of opponents) {
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, opp.x, opp.y) < 25) return false;
+    }
+    return true;
+  }
+
+  moveToward(target, speed) {
+    if (!target) return;
+    const dx = target.x - this.player.x;
+    const dy = target.y - this.player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 3) {
+      this.player.body.setVelocity(0, 0);
+      return;
+    }
+    this.player.body.setVelocity((dx / dist) * speed, (dy / dist) * speed);
+  }
+}
+
+// ============================================================
+// SECTION 6: SCENES
+// ============================================================
+
+class BootScene extends Phaser.Scene {
+  constructor() { super('BootScene'); }
+
+  create() {
+    sfx.init();
+    GameState.isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+    // Generate all procedural textures
+    BALL_COLORS.forEach(b => generateBallTexture(this, b.key, b.base, b.seam));
+    TEAMS.forEach(t => {
+      generatePlayerTexture(this, 'player_boy_' + t.key, 'boy', t.primary, t.secondary, SKIN_TONES[0]);
+      generatePlayerTexture(this, 'player_girl_' + t.key, 'girl', t.primary, t.secondary, SKIN_TONES[0]);
+      generateLogoTexture(this, t);
+    });
+    COURTS.forEach(c => {
+      generateCourtTexture(this, 'court_' + c.key, c.color, c.paint);
+      generateBackgroundTexture(this, c);
+    });
+    generateShadowTexture(this);
+    generateHoopTexture(this);
+    generateArrowTexture(this);
+
+    // Setup animations for each team
+    TEAMS.forEach(t => {
+      ['boy', 'girl'].forEach(g => {
+        const k = `player_${g}_${t.key}`;
+        this.anims.create({ key: k + '_idle', frames: this.anims.generateFrameNumbers(k, { start: 0, end: 1 }), frameRate: 4, repeat: -1 });
+        this.anims.create({ key: k + '_run', frames: this.anims.generateFrameNumbers(k, { start: 2, end: 5 }), frameRate: 8, repeat: -1 });
+        this.anims.create({ key: k + '_shoot', frames: [{ key: k, frame: 6 }], frameRate: 1, repeat: 0 });
+        this.anims.create({ key: k + '_dribble', frames: [{ key: k, frame: 7 }], frameRate: 1, repeat: 0 });
+      });
+    });
+
+    this.scene.start('TitleScene');
+  }
+}
+
+class TitleScene extends Phaser.Scene {
+  constructor() { super('TitleScene'); }
+
+  create() {
+    this.bgIndex = 0;
+    this.bgTimer = 0;
+    this.bg = this.add.image(GAME_W / 2, GAME_H / 2, 'bg_' + COURTS[0].key);
+
+    // Title text
+    this.add.text(GAME_W / 2, 60, 'HOOPS', {
+      fontSize: '48px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000', strokeThickness: 6
+    }).setOrigin(0.5);
+
+    this.add.text(GAME_W / 2, 105, '3 vs 3 Street Basketball', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#FFFFFF',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+
+    // Bouncing ball
+    this.ball = this.add.image(GAME_W / 2, 150, 'ball_orange').setScale(2);
+    this.tweens.add({
+      targets: this.ball, y: 140, duration: 400, yoyo: true, repeat: -1, ease: 'Bounce.easeOut'
+    });
+
+    // Start prompt
+    const startText = GameState.isTouchDevice ? 'Tap to Start' : 'Press ENTER to Start';
+    this.startLabel = this.add.text(GAME_W / 2, 200, startText, {
+      fontSize: '14px', fontFamily: 'monospace', color: '#FFFFFF',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: this.startLabel, alpha: 0.3, duration: 600, yoyo: true, repeat: -1 });
+
+    // Help button
+    const helpBtn = this.add.text(GAME_W / 2, 235, '[H] Help', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#AAAAAA',
+      stroke: '#000', strokeThickness: 2
+    }).setOrigin(0.5).setInteractive();
+    helpBtn.on('pointerdown', () => { sfx.play('click'); this.scene.start('HelpScene'); });
+
+    // Input
+    this.input.keyboard.on('keydown-ENTER', () => { sfx.play('click'); this.scene.start('PlayerCustomizeScene'); });
+    this.input.keyboard.on('keydown-H', () => { sfx.play('click'); this.scene.start('HelpScene'); });
+    this.input.on('pointerdown', (p) => {
+      if (p.y < 220) { sfx.play('click'); this.scene.start('PlayerCustomizeScene'); }
+    });
+  }
+
+  update(time, delta) {
+    this.bgTimer += delta;
+    if (this.bgTimer > 3000) {
+      this.bgTimer = 0;
+      this.bgIndex = (this.bgIndex + 1) % COURTS.length;
+      this.bg.setTexture('bg_' + COURTS[this.bgIndex].key);
+    }
+  }
+}
+
+class HelpScene extends Phaser.Scene {
+  constructor() { super('HelpScene'); }
+
+  create() {
+    this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x111111);
+
+    this.add.text(GAME_W / 2, 15, 'CONTROLS', {
+      fontSize: '20px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+
+    if (GameState.isTouchDevice) {
+      const lines = [
+        'JOYSTICK (left) - Move',
+        'SHOOT btn (right) - Hold & release to shoot',
+        'PASS btn - Pass to teammate',
+        'ACTION btn - Steal / Switch player',
+        'Double-tap joystick - Sprint',
+      ];
+      lines.forEach((l, i) => {
+        this.add.text(20, 40 + i * 20, l, { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' });
+      });
+    } else {
+      const lines = [
+        'Arrow Keys / WASD - Move player',
+        'SPACE - Shoot (hold to charge)',
+        'X - Pass to teammate',
+        'Z - Switch player / Call screen',
+        'C - Steal / Juke',
+        'SHIFT - Sprint',
+        'ENTER - Confirm',
+        'ESC - Pause / Back',
+      ];
+      lines.forEach((l, i) => {
+        this.add.text(20, 40 + i * 20, l, { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' });
+      });
+    }
+
+    this.add.text(GAME_W / 2, 230, 'RULES: First to 20 wins! 2pts inside arc, 3pts outside.', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#AAAAAA'
+    }).setOrigin(0.5);
+
+    const backText = GameState.isTouchDevice ? 'Tap to go back' : 'Press ESC to go back';
+    this.add.text(GAME_W / 2, 250, backText, {
+      fontSize: '10px', fontFamily: 'monospace', color: '#FFFF00'
+    }).setOrigin(0.5);
+
+    this.input.keyboard.on('keydown-ESC', () => { sfx.play('click'); this.scene.start('TitleScene'); });
+    this.input.on('pointerdown', () => { sfx.play('click'); this.scene.start('TitleScene'); });
+  }
+}
+
+class PlayerCustomizeScene extends Phaser.Scene {
+  constructor() { super('PlayerCustomizeScene'); }
+
+  create() {
+    this.step = 1; // 1 = gender, 2 = team
+    this.genderIndex = 0;
+    this.teamIndex = 0;
+    this.genders = ['boy', 'girl'];
+
+    this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x1A1A2E);
+
+    this.titleText = this.add.text(GAME_W / 2, 15, 'Choose Your Player', {
+      fontSize: '16px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+
+    this.drawStep1();
+
+    // Input
+    this.input.keyboard.on('keydown-LEFT', () => this.navigate(-1));
+    this.input.keyboard.on('keydown-RIGHT', () => this.navigate(1));
+    this.input.keyboard.on('keydown-UP', () => this.navigate(-1));
+    this.input.keyboard.on('keydown-DOWN', () => this.navigate(1));
+    this.input.keyboard.on('keydown-ENTER', () => this.confirm());
+    this.input.keyboard.on('keydown-ESC', () => { sfx.play('click'); this.scene.start('TitleScene'); });
+  }
+
+  navigate(dir) {
+    sfx.play('click');
+    if (this.step === 1) {
+      this.genderIndex = (this.genderIndex + dir + 2) % 2;
+      this.drawStep1();
+    } else {
+      this.teamIndex = (this.teamIndex + dir + TEAMS.length) % TEAMS.length;
+      this.drawStep2();
+    }
+  }
+
+  confirm() {
+    sfx.play('click');
+    if (this.step === 1) {
+      GameState.playerGender = this.genders[this.genderIndex];
+      this.step = 2;
+      this.clearContent();
+      this.titleText.setText('Choose Your Team');
+      this.drawStep2();
+    } else {
+      GameState.playerTeam = TEAMS[this.teamIndex];
+      // Pick opponent team — choose from the other league for visual contrast
+      const playerLeague = TEAMS[this.teamIndex].league;
+      const oppositeLeague = TEAMS.filter((t, i) => t.league !== playerLeague);
+      if (oppositeLeague.length > 0) {
+        GameState.opponentTeam = oppositeLeague[Math.floor(Math.random() * oppositeLeague.length)];
+      } else {
+        let oppIdx = (this.teamIndex + 3) % TEAMS.length;
+        GameState.opponentTeam = TEAMS[oppIdx];
+      }
+      this.scene.start('BallSelectScene');
+    }
+  }
+
+  clearContent() {
+    if (this.contentGroup) this.contentGroup.destroy(true);
+    this.contentGroup = this.add.group();
+  }
+
+  drawStep1() {
+    this.clearContent();
+    const g = this.contentGroup;
+
+    for (let i = 0; i < 2; i++) {
+      const x = GAME_W / 2 + (i - 0.5) * 100;
+      const selected = i === this.genderIndex;
+      const gender = this.genders[i];
+
+      // Preview sprite
+      const sprite = this.add.sprite(x, 110, `player_${gender}_${TEAMS[0].key}`, 0).setScale(3);
+      g.add(sprite);
+
+      // Label
+      const label = this.add.text(x, 160, gender === 'boy' ? 'Boy' : 'Girl', {
+        fontSize: '14px', fontFamily: 'monospace', color: selected ? '#FFD700' : '#888',
+        stroke: '#000', strokeThickness: 2
+      }).setOrigin(0.5);
+      g.add(label);
+
+      // Selection box
+      if (selected) {
+        const box = this.add.rectangle(x, 120, 60, 80, 0xFFD700, 0).setStrokeStyle(2, 0xFFD700);
+        g.add(box);
+      }
+
+      // Touch
+      sprite.setInteractive();
+      sprite.on('pointerdown', () => { this.genderIndex = i; this.confirm(); });
+    }
+
+    this.add.text(GAME_W / 2, 210, 'Arrow keys to select, ENTER to confirm', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#888'
+    }).setOrigin(0.5);
+  }
+
+  drawStep2() {
+    this.clearContent();
+    const g = this.contentGroup;
+    const team = TEAMS[this.teamIndex];
+
+    // Team logo
+    const logo = this.add.image(GAME_W / 2, 80, 'logo_' + team.key).setScale(2);
+    g.add(logo);
+
+    // Team name
+    const nameText = this.add.text(GAME_W / 2, 120, team.name, {
+      fontSize: '18px', fontFamily: 'monospace', color: '#FFFFFF',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+    g.add(nameText);
+
+    // League
+    const leagueText = this.add.text(GAME_W / 2, 140, team.league, {
+      fontSize: '10px', fontFamily: 'monospace', color: '#AAAAAA'
+    }).setOrigin(0.5);
+    g.add(leagueText);
+
+    // Player preview
+    const key = `player_${GameState.playerGender}_${team.key}`;
+    const preview = this.add.sprite(GAME_W / 2, 185, key, 0).setScale(3);
+    g.add(preview);
+
+    // Navigation hints
+    const navText = this.add.text(GAME_W / 2, 240, `< ${this.teamIndex + 1}/${TEAMS.length} >`, {
+      fontSize: '10px', fontFamily: 'monospace', color: '#888'
+    }).setOrigin(0.5);
+    g.add(navText);
+
+    // Left/right arrows for touch
+    const leftBtn = this.add.text(30, 120, '<', {
+      fontSize: '28px', fontFamily: 'monospace', color: '#FFD700'
+    }).setOrigin(0.5).setInteractive();
+    leftBtn.on('pointerdown', () => this.navigate(-1));
+    g.add(leftBtn);
+
+    const rightBtn = this.add.text(GAME_W - 30, 120, '>', {
+      fontSize: '28px', fontFamily: 'monospace', color: '#FFD700'
+    }).setOrigin(0.5).setInteractive();
+    rightBtn.on('pointerdown', () => this.navigate(1));
+    g.add(rightBtn);
+
+    // Confirm button for touch
+    const confirmBtn = this.add.text(GAME_W / 2, 258, 'SELECT', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#000', backgroundColor: '#FFD700',
+      padding: { x: 8, y: 4 }
+    }).setOrigin(0.5).setInteractive();
+    confirmBtn.on('pointerdown', () => this.confirm());
+    g.add(confirmBtn);
+  }
+}
+
+class BallSelectScene extends Phaser.Scene {
+  constructor() { super('BallSelectScene'); }
+
+  create() {
+    this.selectedIndex = 0;
+    this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x1A1A2E);
+
+    this.add.text(GAME_W / 2, 20, 'Choose Your Ball', {
+      fontSize: '16px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+
+    this.ballSprites = [];
+    this.labels = [];
+    this.boxes = [];
+
+    BALL_COLORS.forEach((b, i) => {
+      const col = i % 3;
+      const row = Math.floor(i / 3);
+      const x = 120 + col * 120;
+      const y = 80 + row * 90;
+
+      const sprite = this.add.image(x, y, b.key).setScale(3).setInteractive();
+      sprite.on('pointerdown', () => { this.selectedIndex = i; this.confirm(); });
+      this.ballSprites.push(sprite);
+
+      const label = this.add.text(x, y + 30, b.name, {
+        fontSize: '8px', fontFamily: 'monospace', color: '#CCC'
+      }).setOrigin(0.5);
+      this.labels.push(label);
+
+      const box = this.add.rectangle(x, y, 40, 40, 0xFFD700, 0);
+      this.boxes.push(box);
+    });
+
+    this.updateSelection();
+
+    this.input.keyboard.on('keydown-LEFT', () => { this.selectedIndex = (this.selectedIndex - 1 + 6) % 6; sfx.play('click'); this.updateSelection(); });
+    this.input.keyboard.on('keydown-RIGHT', () => { this.selectedIndex = (this.selectedIndex + 1) % 6; sfx.play('click'); this.updateSelection(); });
+    this.input.keyboard.on('keydown-UP', () => { this.selectedIndex = (this.selectedIndex - 3 + 6) % 6; sfx.play('click'); this.updateSelection(); });
+    this.input.keyboard.on('keydown-DOWN', () => { this.selectedIndex = (this.selectedIndex + 3) % 6; sfx.play('click'); this.updateSelection(); });
+    this.input.keyboard.on('keydown-ENTER', () => this.confirm());
+    this.input.keyboard.on('keydown-ESC', () => { sfx.play('click'); this.scene.start('PlayerCustomizeScene'); });
+  }
+
+  updateSelection() {
+    this.boxes.forEach((box, i) => {
+      box.setStrokeStyle(i === this.selectedIndex ? 2 : 0, 0xFFD700);
+    });
+    this.labels.forEach((l, i) => l.setColor(i === this.selectedIndex ? '#FFD700' : '#CCC'));
+  }
+
+  confirm() {
+    sfx.play('click');
+    GameState.selectedBall = BALL_COLORS[this.selectedIndex];
+    this.scene.start('CourtSelectScene');
+  }
+}
+
+class CourtSelectScene extends Phaser.Scene {
+  constructor() { super('CourtSelectScene'); }
+
+  create() {
+    this.selectedIndex = 0;
+
+    this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x111111);
+
+    this.add.text(GAME_W / 2, 15, 'Choose Your Court', {
+      fontSize: '16px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+
+    this.bgPreview = this.add.image(GAME_W / 2, 130, 'bg_' + COURTS[0].key).setScale(0.65);
+    this.courtName = this.add.text(GAME_W / 2, 220, COURTS[0].name, {
+      fontSize: '16px', fontFamily: 'monospace', color: '#FFF',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+
+    this.navText = this.add.text(GAME_W / 2, 240, '< 1/6 >', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#888'
+    }).setOrigin(0.5);
+
+    // Touch arrows
+    this.add.text(20, 120, '<', { fontSize: '28px', fontFamily: 'monospace', color: '#FFD700' })
+      .setOrigin(0.5).setInteractive().on('pointerdown', () => this.navigate(-1));
+    this.add.text(GAME_W - 20, 120, '>', { fontSize: '28px', fontFamily: 'monospace', color: '#FFD700' })
+      .setOrigin(0.5).setInteractive().on('pointerdown', () => this.navigate(1));
+
+    const confirmBtn = this.add.text(GAME_W / 2, 258, 'PLAY', {
+      fontSize: '14px', fontFamily: 'monospace', color: '#000', backgroundColor: '#FFD700',
+      padding: { x: 12, y: 4 }
+    }).setOrigin(0.5).setInteractive();
+    confirmBtn.on('pointerdown', () => this.confirm());
+
+    this.input.keyboard.on('keydown-LEFT', () => this.navigate(-1));
+    this.input.keyboard.on('keydown-RIGHT', () => this.navigate(1));
+    this.input.keyboard.on('keydown-ENTER', () => this.confirm());
+    this.input.keyboard.on('keydown-ESC', () => { sfx.play('click'); this.scene.start('BallSelectScene'); });
+  }
+
+  navigate(dir) {
+    sfx.play('click');
+    this.selectedIndex = (this.selectedIndex + dir + COURTS.length) % COURTS.length;
+    this.bgPreview.setTexture('bg_' + COURTS[this.selectedIndex].key);
+    this.courtName.setText(COURTS[this.selectedIndex].name);
+    this.navText.setText(`< ${this.selectedIndex + 1}/${COURTS.length} >`);
+  }
+
+  confirm() {
+    sfx.play('click');
+    GameState.courtKey = COURTS[this.selectedIndex];
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('GameScene');
+    });
+  }
+}
+
+// ============================================================
+// SECTION 7: MAIN GAME SCENE
+// ============================================================
+
+class GameScene extends Phaser.Scene {
+  constructor() { super('GameScene'); }
+
+  create() {
+    // Reset state
+    GameState.teamAScore = 0;
+    GameState.teamBScore = 0;
+    GameState.teamAFouls = 0;
+    GameState.teamBFouls = 0;
+    GameState.possession = 'teamA';
+    GameState.phase = 'CHECK_BALL';
+    GameState.shotClock = SHOT_CLOCK_MAX;
+
+    // Background
+    this.add.image(GAME_W / 2, GAME_H / 2, 'bg_' + GameState.courtKey.key);
+    // Court
+    this.add.image(GAME_W / 2, GAME_H / 2, 'court_' + GameState.courtKey.key).setAlpha(0.85);
+
+    // Create players
+    this.allPlayers = [];
+    this.aiControllers = [];
+    this.createTeams();
+
+    // Ball — start at controlled player's position
+    const startX = this.controlledPlayer.x + 8;
+    const startY = this.controlledPlayer.y + 4;
+    this.ball = this.add.image(startX, startY, GameState.selectedBall.key).setScale(1.2);
+    this.ballShadow = this.add.image(startX, startY + 8, 'shadow');
+    this.ball.zHeight = 0;
+    this.ball.isShot = false;
+    this.ball.isPass = false;
+    this.ball.shotTimer = 0;
+    this.ball.foulOn = null;
+
+    // Give ball to player
+    GameState.ballHolder = this.controlledPlayer;
+
+    // Arrow indicator above controlled player
+    this.playerArrow = this.add.image(0, 0, 'arrow');
+
+    // Shot power bar
+    this.powerBar = this.add.rectangle(0, 0, 30, 4, 0x00FF00).setVisible(false);
+    this.powerBarBg = this.add.rectangle(0, 0, 30, 4, 0x333333).setVisible(false);
+    this.isShooting = false;
+    this.shootPower = 0;
+
+    // Controls
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.keys = this.input.keyboard.addKeys({
+      w: Phaser.Input.Keyboard.KeyCodes.W,
+      a: Phaser.Input.Keyboard.KeyCodes.A,
+      s: Phaser.Input.Keyboard.KeyCodes.S,
+      d: Phaser.Input.Keyboard.KeyCodes.D,
+      space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      x: Phaser.Input.Keyboard.KeyCodes.X,
+      z: Phaser.Input.Keyboard.KeyCodes.Z,
+      c: Phaser.Input.Keyboard.KeyCodes.C,
+      shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      esc: Phaser.Input.Keyboard.KeyCodes.ESC,
+    });
+
+    // Touch controls
+    if (GameState.isTouchDevice) {
+      this.createTouchControls();
+    }
+
+    // Shot clock timer
+    this.shotClockEvent = this.time.addEvent({
+      delay: 1000, callback: this.tickShotClock, callbackScope: this, loop: true
+    });
+
+    // Launch HUD
+    this.scene.launch('HUDScene');
+
+    // Message text for announcements
+    this.messageText = this.add.text(GAME_W / 2, GAME_H / 2 - 20, '', {
+      fontSize: '14px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(100);
+
+    // Fade in and start check ball
+    this.cameras.main.fadeIn(500, 0, 0, 0);
+    this.showMessage('CHECK BALL', 1500);
+    this.time.delayedCall(1500, () => { GameState.phase = 'LIVE_PLAY'; });
+  }
+
+  createTeams() {
+    const pTeam = GameState.playerTeam;
+    const oTeam = GameState.opponentTeam;
+    const gender = GameState.playerGender;
+    const roles = ['guard', 'wing', 'big'];
+
+    // Team A (player's team)
+    const teamAPositions = [
+      { x: COURT.CENTER_X, y: 200 },
+      { x: COURT.CENTER_X - 80, y: 170 },
+      { x: COURT.CENTER_X + 80, y: 170 },
+    ];
+
+    for (let i = 0; i < 3; i++) {
+      const key = `player_${gender}_${pTeam.key}`;
+      const p = this.physics.add.sprite(teamAPositions[i].x, teamAPositions[i].y, key, 0).setScale(1.5);
+      p.setCollideWorldBounds(false);
+      p.body.setSize(10, 16);
+      p.setDrag(300, 300);
+      p.teamId = 'teamA';
+      p.role = roles[i];
+      p.play(key + '_idle');
+
+      if (i === 0) {
+        this.controlledPlayer = p;
+      } else {
+        const ai = new AIController(p, 'teamA', roles[i]);
+        this.aiControllers.push(ai);
+      }
+      this.allPlayers.push(p);
+    }
+
+    // Team B (opponent)
+    const teamBPositions = [
+      { x: COURT.CENTER_X, y: 100 },
+      { x: COURT.CENTER_X - 70, y: 130 },
+      { x: COURT.CENTER_X + 70, y: 130 },
+    ];
+
+    const oppGender = gender === 'boy' ? 'girl' : 'boy'; // opponent uses opposite gender for visual distinction
+    for (let i = 0; i < 3; i++) {
+      const key = `player_${oppGender}_${oTeam.key}`;
+      const p = this.physics.add.sprite(teamBPositions[i].x, teamBPositions[i].y, key, 0).setScale(1.5);
+      p.setCollideWorldBounds(false);
+      p.body.setSize(10, 16);
+      p.setDrag(300, 300);
+      p.teamId = 'teamB';
+      p.role = roles[i];
+      p.play(key + '_idle');
+
+      const ai = new AIController(p, 'teamB', roles[i]);
+      this.aiControllers.push(ai);
+      this.allPlayers.push(p);
+    }
+  }
+
+  createTouchControls() {
+    // Virtual joystick
+    this.joystickBase = this.add.circle(60, GAME_H - 50, 30, 0xFFFFFF, 0.15).setDepth(200).setScrollFactor(0);
+    this.joystickThumb = this.add.circle(60, GAME_H - 50, 12, 0xFFFFFF, 0.4).setDepth(201).setScrollFactor(0);
+    this.joystickActive = false;
+    this.joystickDir = { x: 0, y: 0 };
+
+    // Action buttons
+    const btnSize = 22;
+    this.shootBtn = this.add.circle(GAME_W - 40, GAME_H - 40, btnSize, 0xFF4444, 0.5).setDepth(200).setScrollFactor(0).setInteractive();
+    this.add.text(GAME_W - 40, GAME_H - 40, 'S', { fontSize: '12px', fontFamily: 'monospace', color: '#FFF' }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+
+    this.passBtn = this.add.circle(GAME_W - 85, GAME_H - 55, 18, 0x4444FF, 0.5).setDepth(200).setScrollFactor(0).setInteractive();
+    this.add.text(GAME_W - 85, GAME_H - 55, 'P', { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+
+    this.actionBtn = this.add.circle(GAME_W - 85, GAME_H - 15, 18, 0x44FF44, 0.5).setDepth(200).setScrollFactor(0).setInteractive();
+    this.add.text(GAME_W - 85, GAME_H - 15, 'A', { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+
+    // Touch handlers for joystick
+    this.input.addPointer(2);
+
+    this.input.on('pointerdown', (pointer) => {
+      if (pointer.x < GAME_W / 2) {
+        this.joystickActive = true;
+        this.joystickBase.setPosition(pointer.x, pointer.y);
+        this.joystickThumb.setPosition(pointer.x, pointer.y);
+      }
+    });
+
+    this.input.on('pointermove', (pointer) => {
+      if (this.joystickActive && pointer.x < GAME_W / 2) {
+        const dx = pointer.x - this.joystickBase.x;
+        const dy = pointer.y - this.joystickBase.y;
+        const dist = Math.min(Math.sqrt(dx * dx + dy * dy), 30);
+        const angle = Math.atan2(dy, dx);
+        this.joystickThumb.setPosition(
+          this.joystickBase.x + Math.cos(angle) * dist,
+          this.joystickBase.y + Math.sin(angle) * dist
+        );
+        this.joystickDir.x = (dist / 30) * Math.cos(angle);
+        this.joystickDir.y = (dist / 30) * Math.sin(angle);
+      }
+    });
+
+    this.input.on('pointerup', (pointer) => {
+      if (pointer.x < GAME_W / 2) {
+        this.joystickActive = false;
+        this.joystickThumb.setPosition(this.joystickBase.x, this.joystickBase.y);
+        this.joystickDir.x = 0;
+        this.joystickDir.y = 0;
+      }
+    });
+
+    // Button handlers
+    this.shootBtn.on('pointerdown', () => { this.touchShootDown = true; });
+    this.shootBtn.on('pointerup', () => { this.touchShootUp = true; });
+    this.passBtn.on('pointerdown', () => { this.touchPass = true; });
+    this.actionBtn.on('pointerdown', () => { this.touchAction = true; });
+  }
+
+  showMessage(text, duration) {
+    this.messageText.setText(text).setAlpha(1);
+    this.tweens.add({ targets: this.messageText, alpha: 0, delay: duration - 300, duration: 300 });
+  }
+
+  tickShotClock() {
+    if (GameState.phase !== 'LIVE_PLAY') return;
+    GameState.shotClock--;
+    if (GameState.shotClock <= 0) {
+      // Shot clock violation - turnover
+      sfx.play('buzzer');
+      this.turnover();
+    }
+    this.events.emit('hudUpdate');
+  }
+
+  turnover() {
+    GameState.possession = GameState.possession === 'teamA' ? 'teamB' : 'teamA';
+    GameState.shotClock = SHOT_CLOCK_MAX;
+    GameState.phase = 'CHECK_BALL';
+    this.resetPositions();
+    this.showMessage('TURNOVER', 1500);
+    this.time.delayedCall(1500, () => { GameState.phase = 'LIVE_PLAY'; });
+  }
+
+  resetPositions() {
+    const teamAPos = [
+      { x: COURT.CENTER_X, y: 200 },
+      { x: COURT.CENTER_X - 80, y: 170 },
+      { x: COURT.CENTER_X + 80, y: 170 },
+    ];
+    const teamBPos = [
+      { x: COURT.CENTER_X, y: 100 },
+      { x: COURT.CENTER_X - 70, y: 130 },
+      { x: COURT.CENTER_X + 70, y: 130 },
+    ];
+
+    let ai = 0, bi = 0;
+    this.allPlayers.forEach(p => {
+      p.body.setVelocity(0, 0);
+      if (p.teamId === 'teamA') {
+        p.setPosition(teamAPos[ai].x, teamAPos[ai].y); ai++;
+      } else {
+        p.setPosition(teamBPos[bi].x, teamBPos[bi].y); bi++;
+      }
+    });
+
+    // Give ball to the team with possession
+    if (GameState.possession === 'teamA') {
+      GameState.ballHolder = this.controlledPlayer;
+    } else {
+      const oppPlayers = this.allPlayers.filter(p => p.teamId === 'teamB');
+      GameState.ballHolder = oppPlayers[0];
+    }
+    this.ball.isShot = false;
+    this.ball.isPass = false;
+  }
+
+  update(time, delta) {
+    const dt = delta / 1000;
+
+    // Update player arrow
+    this.playerArrow.setPosition(this.controlledPlayer.x, this.controlledPlayer.y - 22);
+
+    // Handle input
+    if (GameState.phase === 'LIVE_PLAY') {
+      this.handlePlayerInput(dt);
+      this.updateAI(dt);
+      this.updateBall(dt);
+      this.checkFouls();
+    } else {
+      // Even when not in LIVE_PLAY, ball should follow holder
+      if (GameState.ballHolder && !this.ball.isShot && !this.ball.isPass) {
+        const h = GameState.ballHolder;
+        this.ball.x = h.x + 8;
+        this.ball.y = h.y + 4;
+        this.ball.zHeight = 2;
+      }
+    }
+
+    // Update ball position
+    this.updateBallRendering();
+
+    // Update animations
+    this.updateAnimations();
+
+    // Emit HUD update
+    this.events.emit('hudUpdate');
+  }
+
+  handlePlayerInput(dt) {
+    const player = this.controlledPlayer;
+    let vx = 0, vy = 0;
+    const speed = this.keys.shift.isDown ? 160 : 110;
+
+    // Keyboard input
+    if (this.cursors.left.isDown || this.keys.a.isDown) vx = -1;
+    if (this.cursors.right.isDown || this.keys.d.isDown) vx = 1;
+    if (this.cursors.up.isDown || this.keys.w.isDown) vy = -1;
+    if (this.cursors.down.isDown || this.keys.s.isDown) vy = 1;
+
+    // Touch joystick
+    if (GameState.isTouchDevice && this.joystickActive) {
+      vx = this.joystickDir.x;
+      vy = this.joystickDir.y;
+    }
+
+    // Normalize
+    const len = Math.sqrt(vx * vx + vy * vy);
+    if (len > 0) {
+      player.body.setVelocity((vx / len) * speed, (vy / len) * speed);
+    } else {
+      player.body.setVelocity(0, 0);
+    }
+
+    // Clamp to court bounds
+    player.x = Phaser.Math.Clamp(player.x, COURT.LEFT + 8, COURT.RIGHT - 8);
+    player.y = Phaser.Math.Clamp(player.y, COURT.TOP + 8, COURT.BOTTOM - 8);
+
+    // Shooting
+    if (Phaser.Input.Keyboard.JustDown(this.keys.space) || this.touchShootDown) {
+      this.touchShootDown = false;
+      if (GameState.ballHolder === player && !this.isShooting) {
+        this.isShooting = true;
+        this.shootPower = 0;
+        this.powerBarBg.setVisible(true);
+        this.powerBar.setVisible(true);
+      }
+    }
+
+    if (this.isShooting) {
+      this.shootPower = Math.min(this.shootPower + dt * 0.7, 1);
+      // Update power bar
+      this.powerBarBg.setPosition(player.x, player.y - 28);
+      this.powerBar.setPosition(player.x - 15 + this.shootPower * 15, player.y - 28);
+      this.powerBar.setSize(this.shootPower * 30, 4);
+      // Color: green in optimal zone, yellow otherwise, red at extremes
+      if (this.shootPower > 0.65 && this.shootPower < 0.85) {
+        this.powerBar.setFillStyle(0x00FF00);
+      } else if (this.shootPower > 0.5 && this.shootPower < 0.95) {
+        this.powerBar.setFillStyle(0xFFFF00);
+      } else {
+        this.powerBar.setFillStyle(0xFF0000);
+      }
+    }
+
+    if ((Phaser.Input.Keyboard.JustUp(this.keys.space) || this.touchShootUp) && this.isShooting) {
+      this.touchShootUp = false;
+      this.isShooting = false;
+      this.powerBar.setVisible(false);
+      this.powerBarBg.setVisible(false);
+      this.playerShoot(this.shootPower);
+    }
+
+    // Pass
+    if (Phaser.Input.Keyboard.JustDown(this.keys.x) || this.touchPass) {
+      this.touchPass = false;
+      if (GameState.ballHolder === player) {
+        this.playerPass();
+      }
+    }
+
+    // Switch player (defense) or steal
+    if (Phaser.Input.Keyboard.JustDown(this.keys.z) || Phaser.Input.Keyboard.JustDown(this.keys.c) || this.touchAction) {
+      this.touchAction = false;
+      if (GameState.possession !== 'teamA') {
+        // On defense: switch controlled player or attempt steal
+        if (Phaser.Input.Keyboard.JustDown(this.keys.z)) {
+          this.switchPlayer();
+        } else {
+          this.attemptSteal();
+        }
+      } else {
+        // On offense: Z = switch, C = juke (nothing for now)
+        if (Phaser.Input.Keyboard.JustDown(this.keys.z)) {
+          this.switchPlayer();
+        }
+      }
+    }
+  }
+
+  playerShoot(power) {
+    if (GameState.ballHolder !== this.controlledPlayer) return;
+    const player = this.controlledPlayer;
+    const dist = Phaser.Math.Distance.Between(player.x, player.y, COURT.RIM_X, COURT.RIM_Y);
+
+    // Calculate shot probability
+    let prob = 0.65 - (dist / 250) * 0.35;
+    // Power bonus: optimal is 0.7-0.8
+    const powerDiff = Math.abs(power - 0.75);
+    if (powerDiff < 0.1) prob += 0.15;
+    else if (powerDiff < 0.2) prob += 0.05;
+    else prob -= 0.15;
+
+    // Contest check
+    const opponents = this.allPlayers.filter(p => p.teamId !== player.teamId);
+    const closest = opponents.reduce((min, p) => {
+      const d = Phaser.Math.Distance.Between(player.x, player.y, p.x, p.y);
+      return d < min ? d : min;
+    }, Infinity);
+    if (closest < 25) prob -= 0.2;
+
+    prob = Phaser.Math.Clamp(prob, 0.05, 0.85);
+
+    GameState.ballHolder = null;
+    this.ball.isShot = true;
+    this.ball.shotBy = player;
+    this.ball.shotFrom = { x: player.x, y: player.y };
+    this.ball.made = Math.random() < prob;
+    this.ball.shotTimer = 0;
+    this.ball.shotDuration = 0.6 + dist * 0.003;
+    this.ball.startX = player.x;
+    this.ball.startY = player.y;
+    this.ball.zHeight = 0;
+    sfx.play('dribble');
+  }
+
+  playerPass() {
+    const player = this.controlledPlayer;
+    const teammates = this.allPlayers.filter(p => p.teamId === player.teamId && p !== player);
+    if (teammates.length === 0) return;
+
+    // Pass to closest teammate
+    let closest = teammates[0], minDist = Infinity;
+    teammates.forEach(t => {
+      const d = Phaser.Math.Distance.Between(player.x, player.y, t.x, t.y);
+      if (d < minDist) { minDist = d; closest = t; }
+    });
+
+    GameState.ballHolder = null;
+    this.ball.isPass = true;
+    this.ball.passTarget = closest;
+    this.ball.startX = player.x;
+    this.ball.startY = player.y;
+    this.ball.passTimer = 0;
+    this.ball.passDuration = minDist / 250;
+    sfx.play('click');
+  }
+
+  switchPlayer() {
+    const myTeam = this.allPlayers.filter(p => p.teamId === 'teamA' && p !== this.controlledPlayer);
+    if (myTeam.length === 0) return;
+
+    // Remove AI controller for new controlled player, add for old
+    const oldPlayer = this.controlledPlayer;
+
+    // Find closest teammate to the ball or action
+    let closest = myTeam[0];
+    let minDist = Infinity;
+    myTeam.forEach(p => {
+      const d = Phaser.Math.Distance.Between(p.x, p.y, this.ball.x, this.ball.y);
+      if (d < minDist) { minDist = d; closest = p; }
+    });
+
+    this.controlledPlayer = closest;
+
+    // Swap AI controllers
+    this.aiControllers = this.aiControllers.filter(ai => ai.player !== closest);
+    this.aiControllers.push(new AIController(oldPlayer, 'teamA', oldPlayer.role));
+
+    sfx.play('click');
+  }
+
+  attemptSteal() {
+    const player = this.controlledPlayer;
+    if (!GameState.ballHolder || GameState.ballHolder.teamId === player.teamId) return;
+    const dist = Phaser.Math.Distance.Between(player.x, player.y, GameState.ballHolder.x, GameState.ballHolder.y);
+    if (dist > 25) return;
+
+    if (Math.random() < 0.25) {
+      // Steal success
+      GameState.ballHolder = player;
+      GameState.possession = 'teamA';
+      GameState.shotClock = SHOT_CLOCK_MAX;
+      sfx.play('click');
+      this.showMessage('STEAL!', 800);
+    } else if (Math.random() < 0.35) {
+      // Foul
+      this.callFoul(player, GameState.ballHolder);
+    }
+  }
+
+  callFoul(fouler, fouled) {
+    sfx.play('whistle');
+    const onShooter = fouled.isShooting || false;
+
+    if (fouler.teamId === 'teamA') GameState.teamAFouls++;
+    else GameState.teamBFouls++;
+
+    if (onShooter) {
+      // Free throws
+      GameState.phase = 'FREE_THROW';
+      this.showMessage('SHOOTING FOUL', 1500);
+      this.time.delayedCall(1500, () => {
+        this.scene.launch('FreeThrowScene', { shooter: fouled });
+      });
+    } else {
+      // Sideline inbound
+      GameState.possession = fouled.teamId;
+      GameState.shotClock = SHOT_CLOCK_MAX;
+      GameState.phase = 'CHECK_BALL';
+      this.showMessage('FOUL - SIDELINE', 1500);
+      this.resetPositions();
+      this.time.delayedCall(1500, () => { GameState.phase = 'LIVE_PLAY'; });
+    }
+    this.events.emit('hudUpdate');
+  }
+
+  checkFouls() {
+    if (this.ball.foulOn) {
+      this.callFoul(this.ball.fouledBy, this.ball.foulOn);
+      this.ball.foulOn = null;
+      this.ball.fouledBy = null;
+    }
+  }
+
+  updateAI(dt) {
+    this.aiControllers.forEach(ai => {
+      ai.update(dt, GameState, this.allPlayers, this.ball);
+    });
+  }
+
+  updateBall(dt) {
+    // Shot in progress
+    if (this.ball.isShot) {
+      this.ball.shotTimer += dt;
+      const t = this.ball.shotTimer / this.ball.shotDuration;
+
+      if (t >= 1) {
+        // Shot resolved
+        this.ball.isShot = false;
+        if (this.ball.made) {
+          this.onBasketMade();
+        } else {
+          this.onShotMissed();
+        }
+      } else {
+        // Interpolate position
+        this.ball.x = Phaser.Math.Linear(this.ball.startX, COURT.RIM_X, t);
+        this.ball.y = Phaser.Math.Linear(this.ball.startY, COURT.RIM_Y, t);
+        // Parabolic height
+        this.ball.zHeight = Math.sin(t * Math.PI) * (40 + this.ball.shotDuration * 20);
+      }
+      return;
+    }
+
+    // Pass in progress
+    if (this.ball.isPass) {
+      this.ball.passTimer += dt;
+      const t = this.ball.passTimer / this.ball.passDuration;
+
+      if (t >= 1) {
+        this.ball.isPass = false;
+        // Check if pass target is still valid
+        if (this.ball.passTarget && this.ball.passTarget.active) {
+          GameState.ballHolder = this.ball.passTarget;
+          // Check for interception
+          const opponents = this.allPlayers.filter(p => p.teamId !== this.ball.passTarget.teamId);
+          for (const opp of opponents) {
+            const d = Phaser.Math.Distance.Between(this.ball.x, this.ball.y, opp.x, opp.y);
+            if (d < 15 && Math.random() < 0.15) {
+              GameState.ballHolder = opp;
+              GameState.possession = opp.teamId;
+              GameState.shotClock = SHOT_CLOCK_MAX;
+              this.showMessage('INTERCEPTED!', 800);
+              break;
+            }
+          }
+        }
+      } else {
+        this.ball.x = Phaser.Math.Linear(this.ball.startX, this.ball.passTarget.x, t);
+        this.ball.y = Phaser.Math.Linear(this.ball.startY, this.ball.passTarget.y, t);
+        this.ball.zHeight = Math.sin(t * Math.PI) * 15;
+      }
+      return;
+    }
+
+    // Ball follows holder
+    if (GameState.ballHolder) {
+      const h = GameState.ballHolder;
+      this.ball.x = h.x + 8;
+      this.ball.y = h.y + 4;
+      this.ball.zHeight = 2 + Math.sin(Date.now() * 0.008) * 2; // dribble bob
+    }
+  }
+
+  onBasketMade() {
+    sfx.play('swish');
+    sfx.play('score');
+
+    const shooter = this.ball.shotBy;
+    const dist = Phaser.Math.Distance.Between(
+      this.ball.shotFrom.x, this.ball.shotFrom.y, COURT.RIM_X, COURT.RIM_Y
+    );
+    const points = dist > COURT.THREE_PT_RADIUS ? 3 : 2;
+
+    if (shooter.teamId === 'teamA') GameState.teamAScore += points;
+    else GameState.teamBScore += points;
+
+    this.ball.x = COURT.RIM_X;
+    this.ball.y = COURT.RIM_Y + 10;
+    this.ball.zHeight = 0;
+
+    // Confetti effect
+    for (let i = 0; i < 20; i++) {
+      const colors = [0xFFD700, 0xFF4444, 0x44FF44, 0x4444FF, 0xFF44FF, 0x44FFFF];
+      const confetti = this.add.rectangle(
+        COURT.RIM_X + (Math.random() - 0.5) * 10,
+        COURT.RIM_Y,
+        3, 3,
+        colors[Math.floor(Math.random() * colors.length)]
+      ).setDepth(200);
+      this.tweens.add({
+        targets: confetti,
+        x: confetti.x + (Math.random() - 0.5) * 120,
+        y: confetti.y + Math.random() * 80 - 20,
+        alpha: 0,
+        duration: 800 + Math.random() * 400,
+        onComplete: () => confetti.destroy()
+      });
+    }
+
+    this.showMessage(`${points} POINTS!`, 1500);
+
+    // Check win
+    if (GameState.teamAScore >= TARGET_SCORE || GameState.teamBScore >= TARGET_SCORE) {
+      this.time.delayedCall(2000, () => {
+        this.scene.stop('HUDScene');
+        this.scene.start('GameOverScene');
+      });
+      return;
+    }
+
+    // Reset possession
+    GameState.possession = shooter.teamId === 'teamA' ? 'teamB' : 'teamA';
+    GameState.shotClock = SHOT_CLOCK_MAX;
+    GameState.phase = 'CHECK_BALL';
+
+    this.time.delayedCall(1500, () => {
+      this.resetPositions();
+      this.time.delayedCall(500, () => { GameState.phase = 'LIVE_PLAY'; });
+    });
+
+    this.events.emit('hudUpdate');
+  }
+
+  onShotMissed() {
+    sfx.play('rim');
+    this.ball.zHeight = 0;
+    // Ball bounces to a random spot near the rim
+    this.ball.x = COURT.RIM_X + (Math.random() - 0.5) * 60;
+    this.ball.y = COURT.RIM_Y + 20 + Math.random() * 40;
+
+    // Rebound: closest player gets it
+    this.time.delayedCall(300, () => {
+      let closest = this.allPlayers[0], minDist = Infinity;
+      this.allPlayers.forEach(p => {
+        const d = Phaser.Math.Distance.Between(p.x, p.y, this.ball.x, this.ball.y);
+        if (d < minDist) { minDist = d; closest = p; }
+      });
+      GameState.ballHolder = closest;
+      GameState.possession = closest.teamId;
+      GameState.shotClock = SHOT_CLOCK_MAX;
+      if (closest.teamId !== this.ball.shotBy.teamId) {
+        this.showMessage('OFFENSIVE REBOUND', 800);
+      }
+    });
+  }
+
+  updateBallRendering() {
+    // Shadow
+    this.ballShadow.setPosition(this.ball.x, this.ball.y + 8);
+    this.ballShadow.setScale(1 - this.ball.zHeight * 0.005, 1 - this.ball.zHeight * 0.008);
+    this.ballShadow.setAlpha(0.35 - this.ball.zHeight * 0.003);
+
+    // Ball visual position (offset up by zHeight)
+    this.ball.setPosition(this.ball.x, this.ball.y - this.ball.zHeight);
+
+    // Depth sorting
+    this.allPlayers.forEach(p => p.setDepth(p.y));
+    this.ball.setDepth(this.ball.y + 1);
+    this.ballShadow.setDepth(this.ball.y - 1);
+  }
+
+  updateAnimations() {
+    this.allPlayers.forEach(p => {
+      const team = p.teamId === 'teamA' ? GameState.playerTeam : GameState.opponentTeam;
+      const gender = p.teamId === 'teamA' ? GameState.playerGender : (GameState.playerGender === 'boy' ? 'girl' : 'boy');
+      const base = `player_${gender}_${team.key}`;
+      const vel = p.body.velocity;
+
+      if (Math.abs(vel.x) > 10 || Math.abs(vel.y) > 10) {
+        if (p.anims.currentAnim?.key !== base + '_run') p.play(base + '_run');
+        p.flipX = vel.x < 0;
+      } else {
+        if (p.anims.currentAnim?.key !== base + '_idle') p.play(base + '_idle');
+      }
+    });
+  }
+}
+
+// ============================================================
+// SECTION 8: HUD SCENE
+// ============================================================
+
+class HUDScene extends Phaser.Scene {
+  constructor() { super('HUDScene'); }
+
+  create() {
+    const style = { fontSize: '12px', fontFamily: 'monospace', color: '#FFF', stroke: '#000', strokeThickness: 3 };
+    const smallStyle = { fontSize: '8px', fontFamily: 'monospace', color: '#AAA', stroke: '#000', strokeThickness: 2 };
+
+    // Team A score
+    this.teamALabel = this.add.text(10, 4, GameState.playerTeam.name, { ...style, color: '#' + GameState.playerTeam.secondary.toString(16).padStart(6, '0') });
+    this.scoreA = this.add.text(120, 4, '0', style);
+
+    // Dash
+    this.add.text(GAME_W / 2, 4, '-', style).setOrigin(0.5, 0);
+
+    // Team B score
+    this.scoreB = this.add.text(GAME_W - 130, 4, '0', style);
+    this.teamBLabel = this.add.text(GAME_W - 10, 4, GameState.opponentTeam.name, { ...style, color: '#' + GameState.opponentTeam.secondary.toString(16).padStart(6, '0') }).setOrigin(1, 0);
+
+    // Shot clock
+    this.shotClockText = this.add.text(GAME_W / 2, 18, '12', { fontSize: '10px', fontFamily: 'monospace', color: '#FF0' , stroke: '#000', strokeThickness: 2 }).setOrigin(0.5, 0);
+
+    // Foul indicators
+    this.foulsA = this.add.text(10, 18, '', smallStyle);
+    this.foulsB = this.add.text(GAME_W - 10, 18, '', smallStyle).setOrigin(1, 0);
+
+    // Listen for updates
+    const gameScene = this.scene.get('GameScene');
+    gameScene.events.on('hudUpdate', this.refresh, this);
+    this.refresh();
+  }
+
+  refresh() {
+    this.scoreA.setText(GameState.teamAScore.toString());
+    this.scoreB.setText(GameState.teamBScore.toString());
+    this.shotClockText.setText(GameState.shotClock.toString());
+    if (GameState.shotClock <= 5) this.shotClockText.setColor('#FF0000');
+    else this.shotClockText.setColor('#FFFF00');
+    this.foulsA.setText('F:' + GameState.teamAFouls);
+    this.foulsB.setText('F:' + GameState.teamBFouls);
+  }
+}
+
+// ============================================================
+// SECTION 9: FREE THROW SCENE
+// ============================================================
+
+class FreeThrowScene extends Phaser.Scene {
+  constructor() { super('FreeThrowScene'); }
+
+  create(data) {
+    this.shooter = data.shooter;
+    this.shotsRemaining = 2;
+    this.shotsTaken = 0;
+
+    this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x000000, 0.7);
+
+    this.add.text(GAME_W / 2, 30, 'FREE THROW', {
+      fontSize: '18px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000', strokeThickness: 4
+    }).setOrigin(0.5);
+
+    this.resultText = this.add.text(GAME_W / 2, 60, '', {
+      fontSize: '14px', fontFamily: 'monospace', color: '#FFF',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+
+    this.shotsText = this.add.text(GAME_W / 2, 220, `Shot ${this.shotsTaken + 1} of ${this.shotsRemaining}`, {
+      fontSize: '10px', fontFamily: 'monospace', color: '#AAA'
+    }).setOrigin(0.5);
+
+    // Power bar
+    this.barBg = this.add.rectangle(GAME_W / 2, 140, 200, 20, 0x333333);
+    // Zones
+    this.add.rectangle(GAME_W / 2 - 100 + 130, 140, 30, 20, 0x00FF00, 0.3); // green zone (65-80%)
+    this.add.rectangle(GAME_W / 2 - 100 + 100, 140, 30, 20, 0xFFFF00, 0.2); // yellow before
+    this.add.rectangle(GAME_W / 2 - 100 + 170, 140, 20, 20, 0xFFFF00, 0.2); // yellow after
+
+    this.indicator = this.add.rectangle(GAME_W / 2 - 100, 140, 4, 24, 0xFFFFFF);
+    this.indicatorMoving = true;
+    this.indicatorPos = 0;
+    this.indicatorSpeed = 1.5;
+    this.indicatorDir = 1;
+
+    this.promptText = this.add.text(GAME_W / 2, 170, 'Press SPACE or Tap!', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#FFD700'
+    }).setOrigin(0.5);
+
+    this.input.keyboard.on('keydown-SPACE', () => this.stopIndicator());
+    this.input.on('pointerdown', () => this.stopIndicator());
+  }
+
+  update(time, delta) {
+    if (this.indicatorMoving) {
+      this.indicatorPos += this.indicatorDir * this.indicatorSpeed * (delta / 16);
+      if (this.indicatorPos >= 100) { this.indicatorPos = 100; this.indicatorDir = -1; }
+      if (this.indicatorPos <= 0) { this.indicatorPos = 0; this.indicatorDir = 1; }
+      this.indicator.setPosition(GAME_W / 2 - 100 + this.indicatorPos * 2, 140);
+    }
+  }
+
+  stopIndicator() {
+    if (!this.indicatorMoving) return;
+    this.indicatorMoving = false;
+
+    const pos = this.indicatorPos / 100; // 0 to 1
+    let made = false;
+
+    // Green zone: 0.65-0.80
+    if (pos >= 0.65 && pos <= 0.80) {
+      made = Math.random() < 0.95;
+    } else if ((pos >= 0.50 && pos < 0.65) || (pos > 0.80 && pos <= 0.90)) {
+      made = Math.random() < 0.60;
+    } else {
+      made = Math.random() < 0.20;
+    }
+
+    if (made) {
+      sfx.play('swish');
+      this.resultText.setText('MADE IT!').setColor('#00FF00');
+      if (this.shooter.teamId === 'teamA') GameState.teamAScore += 1;
+      else GameState.teamBScore += 1;
+    } else {
+      sfx.play('rim');
+      this.resultText.setText('MISSED!').setColor('#FF0000');
+    }
+
+    this.shotsTaken++;
+    this.shotsText.setText(`Shot ${Math.min(this.shotsTaken + 1, this.shotsRemaining)} of ${this.shotsRemaining}`);
+
+    if (this.shotsTaken < this.shotsRemaining) {
+      this.time.delayedCall(1000, () => {
+        this.indicatorMoving = true;
+        this.indicatorPos = 0;
+        this.indicatorDir = 1;
+        this.indicatorSpeed += 0.3;
+        this.resultText.setText('');
+        this.promptText.setText('Press SPACE or Tap!');
+      });
+    } else {
+      this.promptText.setText('');
+      this.time.delayedCall(1500, () => {
+        const gameScene = this.scene.get('GameScene');
+        GameState.phase = 'CHECK_BALL';
+        GameState.possession = this.shooter.teamId === 'teamA' ? 'teamB' : 'teamA';
+        GameState.shotClock = SHOT_CLOCK_MAX;
+        gameScene.resetPositions();
+        gameScene.showMessage('CHECK BALL', 1000);
+        this.time.delayedCall(1000, () => { GameState.phase = 'LIVE_PLAY'; });
+        this.scene.stop();
+      });
+    }
+  }
+}
+
+// ============================================================
+// SECTION 10: GAME OVER SCENE
+// ============================================================
+
+class GameOverScene extends Phaser.Scene {
+  constructor() { super('GameOverScene'); }
+
+  create() {
+    this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x111111);
+
+    const winner = GameState.teamAScore >= TARGET_SCORE ? 'You Win!' : 'You Lose!';
+    const color = GameState.teamAScore >= TARGET_SCORE ? '#FFD700' : '#FF4444';
+
+    this.add.text(GAME_W / 2, 40, 'GAME OVER', {
+      fontSize: '28px', fontFamily: 'monospace', color: '#FFFFFF',
+      stroke: '#000', strokeThickness: 5
+    }).setOrigin(0.5);
+
+    this.add.text(GAME_W / 2, 80, winner, {
+      fontSize: '22px', fontFamily: 'monospace', color: color,
+      stroke: '#000', strokeThickness: 4
+    }).setOrigin(0.5);
+
+    this.add.text(GAME_W / 2, 120, `${GameState.teamAScore} - ${GameState.teamBScore}`, {
+      fontSize: '24px', fontFamily: 'monospace', color: '#FFFFFF',
+      stroke: '#000', strokeThickness: 4
+    }).setOrigin(0.5);
+
+    this.add.text(GAME_W / 2, 150, `${GameState.playerTeam.name} vs ${GameState.opponentTeam.name}`, {
+      fontSize: '12px', fontFamily: 'monospace', color: '#AAAAAA'
+    }).setOrigin(0.5);
+
+    // Buttons
+    const playAgain = this.add.text(GAME_W / 2, 195, 'PLAY AGAIN', {
+      fontSize: '14px', fontFamily: 'monospace', color: '#000', backgroundColor: '#FFD700',
+      padding: { x: 12, y: 6 }
+    }).setOrigin(0.5).setInteractive();
+    playAgain.on('pointerdown', () => { sfx.play('click'); this.scene.start('GameScene'); });
+
+    const mainMenu = this.add.text(GAME_W / 2, 235, 'MAIN MENU', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#AAAAAA'
+    }).setOrigin(0.5).setInteractive();
+    mainMenu.on('pointerdown', () => { sfx.play('click'); this.scene.start('TitleScene'); });
+
+    this.input.keyboard.on('keydown-ENTER', () => { sfx.play('click'); this.scene.start('GameScene'); });
+    this.input.keyboard.on('keydown-ESC', () => { sfx.play('click'); this.scene.start('TitleScene'); });
+  }
+}
+
+// ============================================================
+// SECTION 11: PHASER GAME CONFIG
+// ============================================================
+
+const config = {
+  type: Phaser.AUTO,
+  width: GAME_W,
+  height: GAME_H,
+  pixelArt: true,
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
+  physics: {
+    default: 'arcade',
+    arcade: {
+      gravity: { y: 0 },
+      debug: false,
+    },
+  },
+  scene: [
+    BootScene, TitleScene, HelpScene,
+    PlayerCustomizeScene, BallSelectScene, CourtSelectScene,
+    GameScene, HUDScene, FreeThrowScene, GameOverScene,
+  ],
+};
+
+const game = new Phaser.Game(config);
+</script>
+</body>
+</html>

@@ -2053,42 +2053,242 @@ class GameOverScene extends Phaser.Scene {
   create() {
     this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x111111);
 
-    const winner = GameState.teamAScore >= TARGET_SCORE ? 'You Win!' : 'You Lose!';
-    const color = GameState.teamAScore >= TARGET_SCORE ? '#FFD700' : '#FF4444';
+    const playerWon = GameState.teamAScore >= TARGET_SCORE;
+    const winner = playerWon ? 'You Win!' : 'You Lose!';
+    const color = playerWon ? '#FFD700' : '#FF4444';
 
-    this.add.text(GAME_W / 2, 40, 'GAME OVER', {
-      fontSize: '28px', fontFamily: 'monospace', color: '#FFFFFF',
+    this.add.text(GAME_W / 2, 20, 'GAME OVER', {
+      fontSize: '24px', fontFamily: 'monospace', color: '#FFFFFF',
       stroke: '#000', strokeThickness: 5
     }).setOrigin(0.5);
 
-    this.add.text(GAME_W / 2, 80, winner, {
-      fontSize: '22px', fontFamily: 'monospace', color: color,
+    this.add.text(GAME_W / 2, 48, winner, {
+      fontSize: '18px', fontFamily: 'monospace', color: color,
       stroke: '#000', strokeThickness: 4
     }).setOrigin(0.5);
 
-    this.add.text(GAME_W / 2, 120, `${GameState.teamAScore} - ${GameState.teamBScore}`, {
-      fontSize: '24px', fontFamily: 'monospace', color: '#FFFFFF',
+    if (playerWon) {
+      // --- WIN: Trophy with winning team logo + celebrating players ---
+      const winTeam = GameState.playerTeam;
+      this.generateTrophyTexture(winTeam);
+      const trophy = this.add.image(GAME_W / 2, 110, 'trophy').setScale(2);
+
+      // Trophy shine animation
+      this.tweens.add({
+        targets: trophy,
+        scaleX: { from: 2, to: 2.15 },
+        scaleY: { from: 2, to: 2.15 },
+        duration: 800,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+
+      // Winning team players flanking the trophy
+      const spriteKey = `player_${GameState.playerGender}_${winTeam.key}`;
+      const p1 = this.add.sprite(GAME_W / 2 - 40, 120, spriteKey, 0).setScale(2);
+      const p2 = this.add.sprite(GAME_W / 2 + 40, 120, spriteKey, 0).setScale(2).setFlipX(true);
+
+      // Players bounce celebration
+      this.tweens.add({
+        targets: [p1, p2],
+        y: { from: 120, to: 114 },
+        duration: 400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeOut'
+      });
+
+      // Sparkle particles around trophy
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const radius = 28 + Math.random() * 12;
+        const sx = GAME_W / 2 + Math.cos(angle) * radius;
+        const sy = 110 + Math.sin(angle) * radius;
+        const sparkle = this.add.rectangle(sx, sy, 2, 2, 0xFFD700).setAlpha(0);
+        this.tweens.add({
+          targets: sparkle,
+          alpha: { from: 0, to: 1 },
+          scaleX: { from: 0.5, to: 1.5 },
+          scaleY: { from: 0.5, to: 1.5 },
+          duration: 600,
+          delay: i * 120,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        });
+      }
+    } else {
+      // --- LOSS: Sad face ---
+      this.generateSadFaceTexture();
+      const sadFace = this.add.image(GAME_W / 2, 105, 'sad_face').setScale(2);
+
+      // Slow gentle sway
+      this.tweens.add({
+        targets: sadFace,
+        angle: { from: -5, to: 5 },
+        duration: 1200,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+
+      // Player sprite looking dejected
+      const spriteKey = `player_${GameState.playerGender}_${GameState.playerTeam.key}`;
+      const p1 = this.add.sprite(GAME_W / 2, 130, spriteKey, 0).setScale(2);
+
+      // Slow head-down bob
+      this.tweens.add({
+        targets: p1,
+        y: { from: 130, to: 132 },
+        duration: 1500,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+    }
+
+    // Score
+    this.add.text(GAME_W / 2, 160, `${GameState.teamAScore} - ${GameState.teamBScore}`, {
+      fontSize: '20px', fontFamily: 'monospace', color: '#FFFFFF',
       stroke: '#000', strokeThickness: 4
     }).setOrigin(0.5);
 
-    this.add.text(GAME_W / 2, 150, `${GameState.playerTeam.name} vs ${GameState.opponentTeam.name}`, {
-      fontSize: '12px', fontFamily: 'monospace', color: '#AAAAAA'
+    this.add.text(GAME_W / 2, 182, `${GameState.playerTeam.name} vs ${GameState.opponentTeam.name}`, {
+      fontSize: '10px', fontFamily: 'monospace', color: '#AAAAAA'
     }).setOrigin(0.5);
 
     // Buttons
-    const playAgain = this.add.text(GAME_W / 2, 195, 'PLAY AGAIN', {
+    const playAgain = this.add.text(GAME_W / 2, 210, 'PLAY AGAIN', {
       fontSize: '14px', fontFamily: 'monospace', color: '#000', backgroundColor: '#FFD700',
       padding: { x: 12, y: 6 }
     }).setOrigin(0.5).setInteractive();
     playAgain.on('pointerdown', () => { sfx.play('click'); this.scene.start('GameScene'); });
 
-    const mainMenu = this.add.text(GAME_W / 2, 235, 'MAIN MENU', {
+    const mainMenu = this.add.text(GAME_W / 2, 248, 'MAIN MENU', {
       fontSize: '12px', fontFamily: 'monospace', color: '#AAAAAA'
     }).setOrigin(0.5).setInteractive();
     mainMenu.on('pointerdown', () => { sfx.play('click'); this.scene.start('TitleScene'); });
 
     this.input.keyboard.on('keydown-ENTER', () => { sfx.play('click'); this.scene.start('GameScene'); });
     this.input.keyboard.on('keydown-ESC', () => { sfx.play('click'); this.scene.start('TitleScene'); });
+  }
+
+  generateTrophyTexture(team) {
+    const c = document.createElement('canvas');
+    c.width = 32; c.height = 40;
+    const ctx = c.getContext('2d');
+    const pri = '#' + team.primary.toString(16).padStart(6, '0');
+    const sec = '#' + team.secondary.toString(16).padStart(6, '0');
+
+    // Cup body (golden)
+    ctx.fillStyle = '#FFD700';
+    // Cup bowl
+    ctx.beginPath();
+    ctx.moveTo(6, 4);
+    ctx.lineTo(26, 4);
+    ctx.lineTo(24, 20);
+    ctx.lineTo(8, 20);
+    ctx.closePath();
+    ctx.fill();
+    // Cup rim highlight
+    ctx.fillStyle = '#FFF8B0';
+    ctx.fillRect(7, 4, 18, 2);
+
+    // Handles
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 2;
+    // Left handle
+    ctx.beginPath();
+    ctx.moveTo(6, 7);
+    ctx.quadraticCurveTo(0, 12, 6, 17);
+    ctx.stroke();
+    // Right handle
+    ctx.beginPath();
+    ctx.moveTo(26, 7);
+    ctx.quadraticCurveTo(32, 12, 26, 17);
+    ctx.stroke();
+
+    // Stem
+    ctx.fillStyle = '#DAA520';
+    ctx.fillRect(14, 20, 4, 6);
+
+    // Base
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(10, 26, 12, 3);
+    ctx.fillStyle = '#DAA520';
+    ctx.fillRect(8, 29, 16, 3);
+
+    // Team logo on cup - small circle with team initial
+    ctx.fillStyle = pri;
+    ctx.beginPath();
+    ctx.arc(16, 12, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = sec;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(16, 12, 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = sec;
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(team.name.substring(0, 2).toUpperCase(), 16, 12);
+
+    if (this.textures.exists('trophy')) this.textures.remove('trophy');
+    this.textures.addCanvas('trophy', c);
+  }
+
+  generateSadFaceTexture() {
+    const c = document.createElement('canvas');
+    c.width = 32; c.height = 32;
+    const ctx = c.getContext('2d');
+
+    // Yellow circle face
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.arc(16, 16, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#DAA520';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(16, 16, 14, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Eyes (looking down)
+    ctx.fillStyle = '#333';
+    ctx.fillRect(9, 12, 3, 4);
+    ctx.fillRect(20, 12, 3, 4);
+
+    // Sad eyebrows (angled down toward center)
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(7, 10);
+    ctx.lineTo(13, 12);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(25, 10);
+    ctx.lineTo(19, 12);
+    ctx.stroke();
+
+    // Frown (curved down)
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(16, 27, 6, Math.PI + 0.4, Math.PI * 2 - 0.4);
+    ctx.stroke();
+
+    // Tear drop on left eye
+    ctx.fillStyle = '#66CCFF';
+    ctx.beginPath();
+    ctx.moveTo(11, 17);
+    ctx.quadraticCurveTo(12, 21, 11, 23);
+    ctx.quadraticCurveTo(9, 21, 11, 17);
+    ctx.fill();
+
+    if (this.textures.exists('sad_face')) this.textures.remove('sad_face');
+    this.textures.addCanvas('sad_face', c);
   }
 }
 

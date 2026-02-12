@@ -3,6 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Hoops">
+  <meta name="theme-color" content="#000000">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-180.png">
   <title>Hoops</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1332,22 +1338,21 @@ class GameScene extends Phaser.Scene {
   }
 
   createTouchControls() {
-    // Virtual joystick
-    this.joystickBase = this.add.circle(60, GAME_H - 50, 30, 0xFFFFFF, 0.15).setDepth(200).setScrollFactor(0);
-    this.joystickThumb = this.add.circle(60, GAME_H - 50, 12, 0xFFFFFF, 0.4).setDepth(201).setScrollFactor(0);
+    // Virtual joystick — positioned with safe area padding
+    this.joystickBase = this.add.circle(65, GAME_H - 60, 30, 0xFFFFFF, 0.15).setDepth(200).setScrollFactor(0);
+    this.joystickThumb = this.add.circle(65, GAME_H - 60, 12, 0xFFFFFF, 0.4).setDepth(201).setScrollFactor(0);
     this.joystickActive = false;
     this.joystickDir = { x: 0, y: 0 };
 
-    // Action buttons
-    const btnSize = 22;
-    this.shootBtn = this.add.circle(GAME_W - 40, GAME_H - 40, btnSize, 0xFF4444, 0.5).setDepth(200).setScrollFactor(0).setInteractive();
-    this.add.text(GAME_W - 40, GAME_H - 40, 'S', { fontSize: '12px', fontFamily: 'monospace', color: '#FFF' }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+    // Action buttons — moved inward from edges for safe area clearance
+    this.shootBtn = this.add.circle(GAME_W - 55, GAME_H - 55, 24, 0xFF4444, 0.5).setDepth(200).setScrollFactor(0).setInteractive();
+    this.add.text(GAME_W - 55, GAME_H - 55, 'S', { fontSize: '12px', fontFamily: 'monospace', color: '#FFF' }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
 
-    this.passBtn = this.add.circle(GAME_W - 85, GAME_H - 55, 18, 0x4444FF, 0.5).setDepth(200).setScrollFactor(0).setInteractive();
-    this.add.text(GAME_W - 85, GAME_H - 55, 'P', { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+    this.passBtn = this.add.circle(GAME_W - 100, GAME_H - 70, 20, 0x4444FF, 0.5).setDepth(200).setScrollFactor(0).setInteractive();
+    this.add.text(GAME_W - 100, GAME_H - 70, 'P', { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
 
-    this.actionBtn = this.add.circle(GAME_W - 85, GAME_H - 15, 18, 0x44FF44, 0.5).setDepth(200).setScrollFactor(0).setInteractive();
-    this.add.text(GAME_W - 85, GAME_H - 15, 'A', { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+    this.actionBtn = this.add.circle(GAME_W - 100, GAME_H - 30, 20, 0x44FF44, 0.5).setDepth(200).setScrollFactor(0).setInteractive();
+    this.add.text(GAME_W - 100, GAME_H - 30, 'A', { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
 
     // Touch handlers for joystick
     this.input.addPointer(2);
@@ -2395,11 +2400,10 @@ const game = new Phaser.Game(config);
   }
 
   // Patch Phaser's input to remap touch/pointer coords when rotated.
-  // CSS rotate(90deg) rotates clockwise. We intercept transformPointer
-  // on the InputManager (game.input in Phaser 3) and unrotate screen
-  // coordinates back to canvas space before Phaser processes them.
+  // In portrait mode we compute game coords directly from page coords,
+  // bypassing Phaser's getBoundingClientRect-based math which breaks
+  // on CSS-rotated canvases.
   function patchInput() {
-    // In Phaser 3, game.input IS the InputManager (not game.input.manager)
     const im = game.input;
     if (!im || im._portraitPatched) return;
     im._portraitPatched = true;
@@ -2408,19 +2412,25 @@ const game = new Phaser.Game(config);
     im.transformPointer = function(pointer, pageX, pageY, wasMove) {
       if (isCurrentlyPortrait && game.canvas) {
         const rect = game.canvas.getBoundingClientRect();
-        // rect is the visual bounding box after CSS rotation.
-        // Center of the visual rect:
+        // Center of the visual (post-rotation) bounding box
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 2;
-        // Touch position relative to visual center:
+        // Touch position relative to visual center
         const dx = pageX - cx;
         const dy = pageY - cy;
-        // The canvas is CSS-rotated 90° clockwise.
-        // To undo: rotate the touch point -90° around center.
-        // Rotation -90°: (dx, dy) → (dy, -dx)
-        const newX = cx + dy;
-        const newY = cy - dx;
-        return origTransform(pointer, newX, newY, wasMove);
+        // Undo 90° clockwise CSS rotation: (dx,dy) → (dy, -dx)
+        const localX = dy;
+        const localY = -dx;
+        // After 90° rotation of a WxH element, getBoundingClientRect gives:
+        //   rect.width = original cssH, rect.height = original cssW
+        const cssW = rect.height;
+        const cssH = rect.width;
+        // Convert from center-origin CSS pixels to game coordinates
+        pointer.x = ((localX + cssW / 2) / cssW) * GAME_W;
+        pointer.y = ((localY + cssH / 2) / cssH) * GAME_H;
+        pointer.worldX = pointer.x;
+        pointer.worldY = pointer.y;
+        return; // Skip origTransform — its getBoundingClientRect math is wrong for rotated canvas
       }
       return origTransform(pointer, pageX, pageY, wasMove);
     };
@@ -2445,6 +2455,11 @@ const game = new Phaser.Game(config);
     patchInput();
   });
 })();
+
+// Register service worker for offline support (PWA)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(function() {});
+}
 </script>
 </body>
 </html>

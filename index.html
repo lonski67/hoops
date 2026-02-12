@@ -2395,11 +2395,12 @@ const game = new Phaser.Game(config);
   }
 
   // Patch Phaser's input to remap touch/pointer coords when rotated.
-  // CSS rotate(90deg) rotates clockwise. The visual rect from
-  // getBoundingClientRect is the post-rotation box. We intercept
-  // pointer events and unrotate screen coords back to canvas space.
+  // CSS rotate(90deg) rotates clockwise. We intercept transformPointer
+  // on the InputManager (game.input in Phaser 3) and unrotate screen
+  // coordinates back to canvas space before Phaser processes them.
   function patchInput() {
-    const im = game.input.manager;
+    // In Phaser 3, game.input IS the InputManager (not game.input.manager)
+    const im = game.input;
     if (!im || im._portraitPatched) return;
     im._portraitPatched = true;
 
@@ -2407,13 +2408,16 @@ const game = new Phaser.Game(config);
     im.transformPointer = function(pointer, pageX, pageY, wasMove) {
       if (isCurrentlyPortrait && game.canvas) {
         const rect = game.canvas.getBoundingClientRect();
-        // rect is the visual bounding box (post-rotation)
+        // rect is the visual bounding box after CSS rotation.
+        // Center of the visual rect:
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 2;
-        // Translate touch to center-relative
+        // Touch position relative to visual center:
         const dx = pageX - cx;
         const dy = pageY - cy;
-        // Undo 90° clockwise rotation: rotate -90° → (x,y) → (y, -x)
+        // The canvas is CSS-rotated 90° clockwise.
+        // To undo: rotate the touch point -90° around center.
+        // Rotation -90°: (dx, dy) → (dy, -dx)
         const newX = cx + dy;
         const newY = cy - dx;
         return origTransform(pointer, newX, newY, wasMove);

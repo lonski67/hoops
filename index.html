@@ -2135,13 +2135,13 @@ class GameOverScene extends Phaser.Scene {
 
       // Player sprite looking dejected, below the sad face
       const spriteKey = `player_${GameState.playerGender}_${GameState.playerTeam.key}`;
-      const p1 = this.add.sprite(GAME_W / 2 - 30, 140, spriteKey, 0).setScale(2);
-      const p2 = this.add.sprite(GAME_W / 2 + 30, 140, spriteKey, 0).setScale(2).setFlipX(true);
+      const p1 = this.add.sprite(GAME_W / 2 - 30, 128, spriteKey, 0).setScale(2);
+      const p2 = this.add.sprite(GAME_W / 2 + 30, 128, spriteKey, 0).setScale(2).setFlipX(true);
 
       // Slow head-down bob
       this.tweens.add({
         targets: [p1, p2],
-        y: { from: 140, to: 142 },
+        y: { from: 128, to: 130 },
         duration: 1500,
         yoyo: true,
         repeat: -1,
@@ -2150,7 +2150,7 @@ class GameOverScene extends Phaser.Scene {
     }
 
     // Score
-    const scoreY = playerWon ? 160 : 172;
+    const scoreY = playerWon ? 160 : 185;
     this.add.text(GAME_W / 2, scoreY, `${GameState.teamAScore} - ${GameState.teamBScore}`, {
       fontSize: '20px', fontFamily: 'monospace', color: '#FFFFFF',
       stroke: '#000', strokeThickness: 4

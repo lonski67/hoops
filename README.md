@@ -10,9 +10,12 @@ A pixel-art 3v3 street basketball game built entirely in the browser with [Phase
 - **13 NBA & WNBA teams** — Lakers, Celtics, Bulls, Warriors, Heat, Nets, Aces, Storm, Liberty, Sun, Lynx, Mercury, Valkyries
 - **6 ball colors** — Classic Orange, Golden, Hot Pink, Purple, Turquoise, Neon Green
 - **6 landmark courts** — Paris, San Francisco, Berlin, Tokyo, Rio de Janeiro, New York
-- **AI opponents** with finite state machine offense & defense
+- **AI opponents** with man-to-man defense, help defense, pass interceptions, and ball pressure
+- **Easy & Hard difficulty** — choose before each game; Hard adds steals, shot contests, and defensive pressure
 - **Fouls, free throws, shot clock** and check-ball rules
-- **Touch controls** for mobile/tablet with virtual joystick
+- **Smooth post-basket transitions** — players walk to position with OFFENSE!/DEFENSE! callouts
+- **Tutorial tips** — contextual hints during your first few possessions
+- **Touch controls** for mobile/tablet with virtual joystick (tap to switch, hold to steal)
 - **Synthesized sound effects** via Web Audio API (no audio files)
 - **Zero dependencies** — single HTML file, all assets procedurally generated
 
@@ -44,8 +47,8 @@ python3 -m http.server 8080
 | Arrow keys / WASD | Move |
 | SPACE | Shoot (hold to charge, release to shoot) |
 | X | Pass |
-| Z | Switch player / Call screen |
-| C | Steal / Juke |
+| Z | Switch player (defense) / Call screen (offense) |
+| C | Steal (defense) / Juke (offense) |
 | SHIFT | Sprint |
 | ENTER | Confirm |
 | ESC | Pause / Back |

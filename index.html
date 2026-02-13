@@ -86,6 +86,33 @@ const COURT = {
 
 const SKIN_TONES = [0xF5D0A9, 0xD2A06B, 0x8D5524, 0x6B3A19];
 
+const DIFFICULTY = {
+  easy: {
+    defenseSpeed: 80,
+    ballHandlerDefSpeed: 95,
+    closeoutSpeed: 110,
+    stealRange: 25,
+    stealRate: 0.012,
+    contestRadius: 30,
+    contestPenalty: 0.15,
+    helpDefense: false,
+    passIntercept: false,
+    ballPressure: false,
+  },
+  hard: {
+    defenseSpeed: 105,
+    ballHandlerDefSpeed: 118,
+    closeoutSpeed: 135,
+    stealRange: 32,
+    stealRate: 0.028,
+    contestRadius: 38,
+    contestPenalty: 0.25,
+    helpDefense: true,
+    passIntercept: true,
+    ballPressure: true,
+  }
+};
+
 // ============================================================
 // SECTION 2: GAME STATE
 // ============================================================
@@ -103,6 +130,9 @@ const GameState = {
   opponentTeam: TEAMS[2],
   courtKey: COURTS[0],
   isTouchDevice: false,
+  difficulty: 'easy',
+  ballPressured: false,
+  tutorialStep: 0,
 };
 
 // ============================================================
@@ -593,6 +623,8 @@ class AIController {
     this.stateTimer = 0;
     this.reactionDelay = 0.3 + Math.random() * 0.7;
     this.decisionTimer = 0;
+    this.assignedMan = null;
+    this.isGuardingBallHandler = false;
   }
 
   getOffensiveSpot() {
@@ -603,12 +635,67 @@ class AIController {
     }
   }
 
-  getDefensiveSpot(assignedMan) {
+  getDefensiveSpot(assignedMan, isBallHandler) {
     if (!assignedMan) return { x: COURT.CENTER_X, y: 120 };
+    if (isBallHandler) {
+      // Chase ball handler — position between them and rim
+      const angle = Math.atan2(assignedMan.y - COURT.RIM_Y, assignedMan.x - COURT.RIM_X);
+      return {
+        x: assignedMan.x - Math.cos(angle) * 18,
+        y: assignedMan.y - Math.sin(angle) * 18
+      };
+    }
+    // Off-ball: stay between man and rim, biased toward man
     return {
-      x: (assignedMan.x + COURT.RIM_X) / 2,
-      y: (assignedMan.y + COURT.RIM_Y) / 2
+      x: assignedMan.x * 0.7 + COURT.RIM_X * 0.3,
+      y: assignedMan.y * 0.7 + COURT.RIM_Y * 0.3
     };
+  }
+
+  static assignDefensiveMatchups(aiControllers, allPlayers, gameState) {
+    const defensiveTeam = gameState.possession === 'teamA' ? 'teamB' : 'teamA';
+    const defenders = aiControllers.filter(ai => ai.team === defensiveTeam);
+    const opponents = allPlayers.filter(p => p.teamId !== defensiveTeam && p.active);
+    if (defenders.length === 0 || opponents.length === 0) return;
+
+    // Find ball handler
+    const ballHandler = gameState.ballHolder;
+    const usedOpponents = new Set();
+
+    // Assign closest defender to ball handler first
+    if (ballHandler && ballHandler.teamId !== defensiveTeam) {
+      let closestDef = null, closestDist = Infinity;
+      for (const ai of defenders) {
+        const d = Phaser.Math.Distance.Between(ai.player.x, ai.player.y, ballHandler.x, ballHandler.y);
+        if (d < closestDist) { closestDist = d; closestDef = ai; }
+      }
+      if (closestDef) {
+        closestDef.assignedMan = ballHandler;
+        closestDef.isGuardingBallHandler = true;
+        usedOpponents.add(ballHandler);
+      }
+    }
+
+    // Assign remaining defenders greedily
+    const unassigned = defenders.filter(ai => !ai.assignedMan || !usedOpponents.has(ai.assignedMan));
+    const availableOpponents = opponents.filter(p => !usedOpponents.has(p));
+
+    for (const ai of unassigned) {
+      let bestOpp = null, bestDist = Infinity;
+      for (const opp of availableOpponents) {
+        if (usedOpponents.has(opp)) continue;
+        const d = Phaser.Math.Distance.Between(ai.player.x, ai.player.y, opp.x, opp.y);
+        if (d < bestDist) { bestDist = d; bestOpp = opp; }
+      }
+      if (bestOpp) {
+        ai.assignedMan = bestOpp;
+        ai.isGuardingBallHandler = false;
+        usedOpponents.add(bestOpp);
+      } else if (opponents.length > 0) {
+        ai.assignedMan = opponents[0];
+        ai.isGuardingBallHandler = false;
+      }
+    }
   }
 
   update(delta, gameState, allPlayers, ball) {
@@ -662,27 +749,97 @@ class AIController {
   }
 
   updateDefense(delta, gs, allPlayers, ball, distToRim) {
-    // Find assigned man (closest opponent)
-    const opponents = allPlayers.filter(p => p.teamId !== this.team && p.active);
-    let assignedMan = opponents[0];
-    let minDist = Infinity;
-    for (const opp of opponents) {
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, opp.x, opp.y);
-      if (d < minDist) { minDist = d; assignedMan = opp; }
+    const diff = DIFFICULTY[gs.difficulty || 'easy'];
+    const assignedMan = this.assignedMan;
+    if (!assignedMan) return;
+
+    const isBH = this.isGuardingBallHandler;
+    const guardPos = this.getDefensiveSpot(assignedMan, isBH);
+    let speed = isBH ? diff.ballHandlerDefSpeed : diff.defenseSpeed;
+
+    // Closeout: if ball handler is stationary (likely shooting), sprint to contest
+    if (isBH && gs.ballHolder && gs.ballHolder.body) {
+      const bhVel = gs.ballHolder.body.velocity;
+      const bhSpeed = Math.sqrt(bhVel.x * bhVel.x + bhVel.y * bhVel.y);
+      if (bhSpeed < 15) {
+        speed = diff.closeoutSpeed;
+      }
     }
 
-    if (assignedMan) {
-      const guardPos = this.getDefensiveSpot(assignedMan);
-      this.moveToward(guardPos, 75);
+    // Help defense (hard only): collapse to paint when ball handler drives in
+    if (diff.helpDefense && !isBH && gs.ballHolder && gs.ballHolder.teamId !== this.team) {
+      const bh = gs.ballHolder;
+      const inPaint = bh.x > COURT.PAINT_LEFT && bh.x < COURT.PAINT_RIGHT
+                   && bh.y < COURT.PAINT_BOTTOM && bh.y > COURT.PAINT_TOP;
+      if (inPaint) {
+        // Check if primary defender is beaten
+        const primaryDef = allPlayers.find(p => p.teamId === this.team && p !== this.player &&
+          Phaser.Math.Distance.Between(p.x, p.y, bh.x, bh.y) < 30);
+        if (!primaryDef) {
+          // Help: collapse toward ball handler
+          this.moveToward({ x: bh.x, y: bh.y + 15 }, diff.closeoutSpeed);
 
-      // Try to steal if very close to ball handler
-      if (gs.ballHolder && gs.ballHolder.teamId !== this.team) {
-        const distToBallHandler = Phaser.Math.Distance.Between(
-          this.player.x, this.player.y, gs.ballHolder.x, gs.ballHolder.y
-        );
-        if (distToBallHandler < 20 && Math.random() < 0.008) {
-          this.attemptSteal(gs, ball);
+          // Still try to steal while helping
+          const distToBH = Phaser.Math.Distance.Between(this.player.x, this.player.y, bh.x, bh.y);
+          if (distToBH < diff.stealRange && Math.random() < diff.stealRate) {
+            this.attemptSteal(gs, ball);
+          }
+          return;
         }
+      }
+    }
+
+    this.moveToward(guardPos, speed);
+
+    // Ball pressure: slow down ball handler when close (hard only)
+    if (diff.ballPressure && gs.ballHolder && gs.ballHolder.teamId !== this.team) {
+      const distToBH = Phaser.Math.Distance.Between(
+        this.player.x, this.player.y, gs.ballHolder.x, gs.ballHolder.y
+      );
+      if (distToBH < 35) {
+        gs.ballPressured = true;
+      }
+    }
+
+    // Steal attempts
+    if (gs.ballHolder && gs.ballHolder.teamId !== this.team) {
+      const distToBallHandler = Phaser.Math.Distance.Between(
+        this.player.x, this.player.y, gs.ballHolder.x, gs.ballHolder.y
+      );
+      if (distToBallHandler < diff.stealRange && Math.random() < diff.stealRate) {
+        this.attemptSteal(gs, ball);
+      }
+    }
+  }
+
+  static tryInterceptPass(aiControllers, ball, gs) {
+    const diff = DIFFICULTY[gs.difficulty || 'easy'];
+    if (!diff.passIntercept || !ball.isPass || !ball.passTarget) return;
+
+    const defensiveTeam = gs.possession === 'teamA' ? 'teamB' : 'teamA';
+    const defenders = aiControllers.filter(ai => ai.team === defensiveTeam);
+
+    const sx = ball.startX, sy = ball.startY;
+    const tx = ball.passTarget.x, ty = ball.passTarget.y;
+    const passLen = Math.sqrt((tx - sx) * (tx - sx) + (ty - sy) * (ty - sy));
+    if (passLen < 1) return;
+
+    for (const ai of defenders) {
+      // Point-to-line distance
+      const dx = tx - sx, dy = ty - sy;
+      const t = Phaser.Math.Clamp(((ai.player.x - sx) * dx + (ai.player.y - sy) * dy) / (dx * dx + dy * dy), 0, 1);
+      const closestX = sx + t * dx, closestY = sy + t * dy;
+      const dist = Phaser.Math.Distance.Between(ai.player.x, ai.player.y, closestX, closestY);
+
+      if (dist < 20 && Math.random() < 0.12) {
+        // Intercept!
+        ball.isPass = false;
+        ball.passTarget = null;
+        gs.ballHolder = ai.player;
+        gs.possession = ai.team;
+        gs.shotClock = SHOT_CLOCK_MAX;
+        sfx.play('click');
+        return;
       }
     }
   }
@@ -871,29 +1028,45 @@ class HelpScene extends Phaser.Scene {
         'JOYSTICK (left) - Move',
         'SHOOT btn (right) - Hold & release to shoot',
         'PASS btn - Pass to teammate',
-        'ACTION btn - Steal / Switch player',
-        'Double-tap joystick - Sprint',
+        'Tap A btn - Switch player',
+        'Hold A btn - Steal (on defense)',
       ];
       lines.forEach((l, i) => {
-        this.add.text(20, 40 + i * 20, l, { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' });
+        this.add.text(20, 38 + i * 17, l, { fontSize: '9px', fontFamily: 'monospace', color: '#FFF' });
       });
     } else {
       const lines = [
         'Arrow Keys / WASD - Move player',
         'SPACE - Shoot (hold to charge)',
         'X - Pass to teammate',
-        'Z - Switch player / Call screen',
-        'C - Steal / Juke',
+        'Z - Switch player',
+        'C - Steal (on defense)',
         'SHIFT - Sprint',
-        'ENTER - Confirm',
-        'ESC - Pause / Back',
+        'ENTER - Confirm  |  ESC - Back',
       ];
       lines.forEach((l, i) => {
-        this.add.text(20, 40 + i * 20, l, { fontSize: '10px', fontFamily: 'monospace', color: '#FFF' });
+        this.add.text(20, 38 + i * 17, l, { fontSize: '9px', fontFamily: 'monospace', color: '#FFF' });
       });
     }
 
-    this.add.text(GAME_W / 2, 230, 'RULES: First to 20 wins! 2pts inside arc, 3pts outside.', {
+    // Defense tips section
+    this.add.text(GAME_W / 2, 175, '-- DEFENSE TIPS --', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#FF6666',
+      stroke: '#000', strokeThickness: 2
+    }).setOrigin(0.5);
+
+    const defTips = [
+      'Guard the ball handler to force bad shots!',
+      'Get close & steal when they drive the paint',
+      'Switch players to stay near the action',
+    ];
+    defTips.forEach((t, i) => {
+      this.add.text(GAME_W / 2, 192 + i * 13, t, {
+        fontSize: '7px', fontFamily: 'monospace', color: '#FFAAAA'
+      }).setOrigin(0.5);
+    });
+
+    this.add.text(GAME_W / 2, 237, 'RULES: First to 20 wins! 2pts inside arc, 3pts outside.', {
       fontSize: '8px', fontFamily: 'monospace', color: '#AAAAAA'
     }).setOrigin(0.5);
 
@@ -1184,6 +1357,95 @@ class CourtSelectScene extends Phaser.Scene {
   confirm() {
     sfx.play('click');
     GameState.courtKey = COURTS[this.selectedIndex];
+    this.cameras.main.fadeOut(200, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('DifficultyScene');
+    });
+  }
+}
+
+class DifficultyScene extends Phaser.Scene {
+  constructor() { super('DifficultyScene'); }
+
+  create() {
+    this.selectedIndex = 0; // 0 = Easy, 1 = Hard
+    this._confirmed = false;
+    this._ready = false;
+    const labels = ['EASY', 'HARD'];
+    const descriptions = ['Relaxed defense, fewer steals', 'Tight defense, steals & pressure'];
+
+    this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x1A1A2E);
+
+    this.add.text(GAME_W / 2, 25, 'Choose Difficulty', {
+      fontSize: '16px', fontFamily: 'monospace', color: '#FFD700',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+
+    this.optionBoxes = [];
+    this.optionLabels = [];
+    this.optionDescs = [];
+
+    for (let i = 0; i < 2; i++) {
+      const x = GAME_W / 2 + (i - 0.5) * 140;
+      const y = 120;
+
+      const box = this.add.rectangle(x, y, 110, 80, 0x333355, 0.8).setStrokeStyle(2, 0x555577);
+      this.optionBoxes.push(box);
+
+      const label = this.add.text(x, y - 10, labels[i], {
+        fontSize: '18px', fontFamily: 'monospace', color: '#FFF',
+        stroke: '#000', strokeThickness: 3
+      }).setOrigin(0.5);
+      this.optionLabels.push(label);
+
+      const desc = this.add.text(x, y + 15, descriptions[i], {
+        fontSize: '7px', fontFamily: 'monospace', color: '#AAA',
+        wordWrap: { width: 100 }
+      }).setOrigin(0.5);
+      this.optionDescs.push(desc);
+
+      box.setInteractive();
+      box.on('pointerdown', () => { if (this._ready) { this.selectedIndex = i; this.updateSelection(); this.confirm(); } });
+    }
+
+    this.updateSelection();
+
+    // Delay all keyboard input by 400ms to prevent Enter carry-over from previous scene
+    this.time.delayedCall(400, () => {
+      if (this._confirmed) return;
+      this._ready = true;
+      this.input.keyboard.on('keydown-LEFT', () => { sfx.play('click'); this.selectedIndex = 0; this.updateSelection(); });
+      this.input.keyboard.on('keydown-RIGHT', () => { sfx.play('click'); this.selectedIndex = 1; this.updateSelection(); });
+      this.input.keyboard.on('keydown-ENTER', () => this.confirm());
+      this.input.keyboard.on('keydown-ESC', () => { sfx.play('click'); this.scene.start('CourtSelectScene'); });
+    });
+
+    const playBtn = this.add.text(GAME_W / 2, 200, 'PLAY', {
+      fontSize: '14px', fontFamily: 'monospace', color: '#000', backgroundColor: '#FFD700',
+      padding: { x: 12, y: 4 }
+    }).setOrigin(0.5).setInteractive();
+    playBtn.on('pointerdown', () => { if (this._ready) this.confirm(); });
+
+    this.add.text(GAME_W / 2, 240, 'ESC to go back', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#666'
+    }).setOrigin(0.5);
+  }
+
+  updateSelection() {
+    this.optionBoxes.forEach((box, i) => {
+      box.setStrokeStyle(2, i === this.selectedIndex ? 0xFFD700 : 0x555577);
+      box.setFillStyle(i === this.selectedIndex ? 0x444477 : 0x333355, 0.8);
+    });
+    this.optionLabels.forEach((label, i) => {
+      label.setColor(i === this.selectedIndex ? '#FFD700' : '#FFF');
+    });
+  }
+
+  confirm() {
+    if (this._confirmed || !this._ready) return;
+    this._confirmed = true;
+    sfx.play('click');
+    GameState.difficulty = this.selectedIndex === 0 ? 'easy' : 'hard';
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start('GameScene');
@@ -1393,12 +1655,36 @@ class GameScene extends Phaser.Scene {
     this.shootBtn.on('pointerdown', () => { this.touchShootDown = true; });
     this.shootBtn.on('pointerup', () => { this.touchShootUp = true; });
     this.passBtn.on('pointerdown', () => { this.touchPass = true; });
-    this.actionBtn.on('pointerdown', () => { this.touchAction = true; });
+    this.actionBtn.on('pointerdown', () => { this.actionDownTime = Date.now(); });
+    this.actionBtn.on('pointerup', () => {
+      const held = Date.now() - (this.actionDownTime || 0);
+      if (held > 300) {
+        this.touchSteal = true; // Hold = steal
+      } else {
+        this.touchAction = true; // Tap = switch
+      }
+      this.actionDownTime = 0;
+    });
   }
 
   showMessage(text, duration) {
     this.messageText.setText(text).setAlpha(1);
     this.tweens.add({ targets: this.messageText, alpha: 0, delay: duration - 300, duration: 300 });
+  }
+
+  showTutorialTip(text) {
+    if (GameState.tutorialStep >= 3) return; // Stop after 3 tips
+    GameState.tutorialStep++;
+    const tip = this.add.text(GAME_W / 2, GAME_H - 30, text, {
+      fontSize: '9px', fontFamily: 'monospace', color: '#FFFF00',
+      stroke: '#000', strokeThickness: 3,
+      backgroundColor: '#000000AA', padding: { x: 6, y: 3 }
+    }).setOrigin(0.5).setDepth(250).setAlpha(0);
+    this.tweens.add({
+      targets: tip, alpha: 1, duration: 200,
+      yoyo: true, hold: 2500,
+      onComplete: () => tip.destroy()
+    });
   }
 
   tickShotClock() {
@@ -1421,25 +1707,38 @@ class GameScene extends Phaser.Scene {
     this.time.delayedCall(1500, () => { GameState.phase = 'LIVE_PLAY'; });
   }
 
-  resetPositions() {
-    const teamAPos = [
+  resetPositions(useTween) {
+    // Offense starts near midcourt, defense closer to paint
+    const offensePos = [
       { x: COURT.CENTER_X, y: 200 },
-      { x: COURT.CENTER_X - 80, y: 170 },
-      { x: COURT.CENTER_X + 80, y: 170 },
+      { x: COURT.CENTER_X - 90, y: 165 },
+      { x: COURT.CENTER_X + 90, y: 165 },
     ];
-    const teamBPos = [
-      { x: COURT.CENTER_X, y: 100 },
-      { x: COURT.CENTER_X - 70, y: 130 },
-      { x: COURT.CENTER_X + 70, y: 130 },
+    const defensePos = [
+      { x: COURT.CENTER_X, y: 140 },
+      { x: COURT.CENTER_X - 60, y: 120 },
+      { x: COURT.CENTER_X + 60, y: 120 },
     ];
+
+    const teamAOnOffense = (GameState.possession === 'teamA');
+    const teamAPositions = teamAOnOffense ? offensePos : defensePos;
+    const teamBPositions = teamAOnOffense ? defensePos : offensePos;
 
     let ai = 0, bi = 0;
     this.allPlayers.forEach(p => {
       p.body.setVelocity(0, 0);
-      if (p.teamId === 'teamA') {
-        p.setPosition(teamAPos[ai].x, teamAPos[ai].y); ai++;
-      } else {
-        p.setPosition(teamBPos[bi].x, teamBPos[bi].y); bi++;
+      const pos = p.teamId === 'teamA' ? teamAPositions[ai++] : teamBPositions[bi++];
+      if (pos) {
+        if (useTween) {
+          this.tweens.add({
+            targets: p,
+            x: pos.x, y: pos.y,
+            duration: 800,
+            ease: 'Power2'
+          });
+        } else {
+          p.setPosition(pos.x, pos.y);
+        }
       }
     });
 
@@ -1489,7 +1788,11 @@ class GameScene extends Phaser.Scene {
   handlePlayerInput(dt) {
     const player = this.controlledPlayer;
     let vx = 0, vy = 0;
-    const speed = this.keys.shift.isDown ? 160 : 110;
+    let speed = this.keys.shift.isDown ? 160 : 110;
+    // Ball pressure slows ball handler
+    if (GameState.ballPressured && GameState.ballHolder === player) {
+      speed = Math.round(speed * 0.8);
+    }
 
     // Keyboard input
     if (this.cursors.left.isDown || this.keys.a.isDown) vx = -1;
@@ -1558,21 +1861,15 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Switch player (defense) or steal
-    if (Phaser.Input.Keyboard.JustDown(this.keys.z) || Phaser.Input.Keyboard.JustDown(this.keys.c) || this.touchAction) {
+    // Switch player (Z / tap action) or steal (C / hold action)
+    if (Phaser.Input.Keyboard.JustDown(this.keys.z) || this.touchAction) {
       this.touchAction = false;
+      this.switchPlayer();
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.keys.c) || this.touchSteal) {
+      this.touchSteal = false;
       if (GameState.possession !== 'teamA') {
-        // On defense: switch controlled player or attempt steal
-        if (Phaser.Input.Keyboard.JustDown(this.keys.z)) {
-          this.switchPlayer();
-        } else {
-          this.attemptSteal();
-        }
-      } else {
-        // On offense: Z = switch, C = juke (nothing for now)
-        if (Phaser.Input.Keyboard.JustDown(this.keys.z)) {
-          this.switchPlayer();
-        }
+        this.attemptSteal();
       }
     }
   }
@@ -1591,12 +1888,13 @@ class GameScene extends Phaser.Scene {
     else prob -= 0.15;
 
     // Contest check
+    const diff = DIFFICULTY[GameState.difficulty || 'easy'];
     const opponents = this.allPlayers.filter(p => p.teamId !== player.teamId);
     const closest = opponents.reduce((min, p) => {
       const d = Phaser.Math.Distance.Between(player.x, player.y, p.x, p.y);
       return d < min ? d : min;
     }, Infinity);
-    if (closest < 25) prob -= 0.2;
+    if (closest < diff.contestRadius) prob -= diff.contestPenalty;
 
     prob = Phaser.Math.Clamp(prob, 0.05, 0.85);
 
@@ -1713,12 +2011,38 @@ class GameScene extends Phaser.Scene {
   }
 
   updateAI(dt) {
+    // Reset ball pressure each frame
+    GameState.ballPressured = false;
+
+    // Assign defensive matchups once per frame (team-wide)
+    if (GameState.phase === 'LIVE_PLAY') {
+      AIController.assignDefensiveMatchups(this.aiControllers, this.allPlayers, GameState);
+      // Try to intercept passes
+      AIController.tryInterceptPass(this.aiControllers, this.ball, GameState);
+    }
+
     this.aiControllers.forEach(ai => {
       ai.update(dt, GameState, this.allPlayers, this.ball);
     });
   }
 
   updateBall(dt) {
+    // Tutorial: contest tip on uncontested opponent shots
+    if (this.ball.isShot && !this._lastShotTipChecked && this.ball.shotBy &&
+        this.ball.shotBy.teamId !== 'teamA' && GameState.tutorialStep < 3) {
+      this._lastShotTipChecked = true;
+      const diff = DIFFICULTY[GameState.difficulty || 'easy'];
+      const myTeam = this.allPlayers.filter(p => p.teamId === 'teamA');
+      const closestDef = myTeam.reduce((min, p) => {
+        const d = Phaser.Math.Distance.Between(p.x, p.y, this.ball.shotBy.x, this.ball.shotBy.y);
+        return d < min ? d : min;
+      }, Infinity);
+      if (closestDef > diff.contestRadius) {
+        this.showTutorialTip('Get close to the shooter to contest!');
+      }
+    }
+    if (!this.ball.isShot) this._lastShotTipChecked = false;
+
     // Shot in progress
     if (this.ball.isShot) {
       this.ball.shotTimer += dt;
@@ -1834,9 +2158,37 @@ class GameScene extends Phaser.Scene {
     GameState.shotClock = SHOT_CLOCK_MAX;
     GameState.phase = 'CHECK_BALL';
 
+    // Smooth transition: tween players to positions, show role text, then resume
     this.time.delayedCall(1500, () => {
-      this.resetPositions();
-      this.time.delayedCall(500, () => { GameState.phase = 'LIVE_PLAY'; });
+      this.resetPositions(true); // useTween = true, players walk to position
+
+      this.time.delayedCall(900, () => {
+        // Show DEFENSE! or OFFENSE! text
+        const roleText = GameState.possession === 'teamA' ? 'OFFENSE!' : 'DEFENSE!';
+        const roleColor = GameState.possession === 'teamA' ? '#FFD700' : '#FF4444';
+        const msg = this.add.text(GAME_W / 2, GAME_H / 2, roleText, {
+          fontSize: '24px', fontFamily: 'monospace', color: roleColor,
+          stroke: '#000', strokeThickness: 4
+        }).setOrigin(0.5).setDepth(300);
+        this.tweens.add({
+          targets: msg,
+          alpha: 0, y: msg.y - 20,
+          duration: 1000, delay: 500,
+          onComplete: () => msg.destroy()
+        });
+
+        // Tutorial tip for first time on defense
+        if (GameState.possession !== 'teamA' && GameState.tutorialStep === 0) {
+          const tipText = GameState.isTouchDevice
+            ? 'Guard the ball handler! Tap A to switch, hold A to steal'
+            : 'Guard the ball handler! Z=switch player, C=steal';
+          this.time.delayedCall(800, () => this.showTutorialTip(tipText));
+        }
+
+        this.time.delayedCall(1500, () => {
+          GameState.phase = 'LIVE_PLAY';
+        });
+      });
     });
 
     this.events.emit('hudUpdate');
@@ -2332,7 +2684,7 @@ const config = {
   },
   scene: [
     BootScene, TitleScene, HelpScene,
-    PlayerCustomizeScene, BallSelectScene, CourtSelectScene,
+    PlayerCustomizeScene, BallSelectScene, CourtSelectScene, DifficultyScene,
     GameScene, HUDScene, FreeThrowScene, GameOverScene,
   ],
 };
@@ -2351,6 +2703,10 @@ const game = new Phaser.Game(config);
   let resizeTimeout = null;
 
   function applyPortraitLayout() {
+    // Only rotate for touch devices (phones/tablets) — never on desktop
+    const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    if (!isTouch) return;
+
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     isCurrentlyPortrait = vh > vw;
@@ -2436,8 +2792,9 @@ const game = new Phaser.Game(config);
     };
   }
 
-  // Try to lock to landscape if the API is available
-  if (screen.orientation && screen.orientation.lock) {
+  // Try to lock to landscape if the API is available (touch devices only)
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  if (isTouch && screen.orientation && screen.orientation.lock) {
     screen.orientation.lock('landscape').catch(function() {
       // Orientation lock not supported, fall back to CSS rotation
     });

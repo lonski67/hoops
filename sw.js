@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hoops-v3';
+const CACHE_NAME = 'hoops-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,12 @@ const ASSETS = [
   './icon-180.png',
   './icon-192.png',
   './icon-512.png',
+  './assets/backgrounds/paris.png',
+  './assets/backgrounds/san_francisco.png',
+  './assets/backgrounds/berlin.png',
+  './assets/backgrounds/tokyo.png',
+  './assets/backgrounds/rio.png',
+  './assets/backgrounds/new_york.png',
   'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js'
 ];
 

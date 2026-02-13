@@ -283,207 +283,7 @@ function generateCourtTexture(scene, key, courtColor, paintColor) {
   scene.textures.addCanvas(key, c);
 }
 
-function generateBackgroundTexture(scene, courtData) {
-  const c = document.createElement('canvas');
-  c.width = GAME_W; c.height = GAME_H;
-  const ctx = c.getContext('2d');
-
-  const key = courtData.key;
-  if (key === 'paris') drawParis(ctx);
-  else if (key === 'san_francisco') drawSanFrancisco(ctx);
-  else if (key === 'berlin') drawBerlin(ctx);
-  else if (key === 'tokyo') drawTokyo(ctx);
-  else if (key === 'rio') drawRio(ctx);
-  else if (key === 'new_york') drawNewYork(ctx);
-
-  scene.textures.addCanvas('bg_' + key, c);
-}
-
-function drawParis(ctx) {
-  // Sky gradient - sunset
-  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
-  grad.addColorStop(0, '#FF9966'); grad.addColorStop(0.5, '#FFB88C'); grad.addColorStop(1, '#87CEEB');
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
-  // Buildings
-  ctx.fillStyle = '#4A3728';
-  for (let x = 0; x < GAME_W; x += 30) {
-    const h = 20 + Math.random() * 40;
-    ctx.fillRect(x, GAME_H - h - 30, 25, h);
-    // Windows
-    ctx.fillStyle = '#FFE4A0';
-    for (let wy = GAME_H - h - 25; wy < GAME_H - 35; wy += 8) {
-      for (let wx = x + 3; wx < x + 22; wx += 6) {
-        ctx.fillRect(wx, wy, 3, 4);
-      }
-    }
-    ctx.fillStyle = '#4A3728';
-  }
-  // Eiffel Tower
-  const tx = 360, tb = GAME_H - 30;
-  ctx.fillStyle = '#5C4033';
-  // Main structure
-  ctx.beginPath(); ctx.moveTo(tx, 10); ctx.lineTo(tx - 35, tb); ctx.lineTo(tx - 30, tb); ctx.lineTo(tx, 50); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(tx, 10); ctx.lineTo(tx + 35, tb); ctx.lineTo(tx + 30, tb); ctx.lineTo(tx, 50); ctx.fill();
-  // Platforms
-  ctx.fillRect(tx - 30, 80, 60, 4);
-  ctx.fillRect(tx - 20, 50, 40, 3);
-  ctx.fillRect(tx - 10, 25, 20, 2);
-  // Ground
-  ctx.fillStyle = '#6B8E5A';
-  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
-}
-
-function drawSanFrancisco(ctx) {
-  // Foggy sky
-  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
-  grad.addColorStop(0, '#A0B4C8'); grad.addColorStop(0.6, '#C8D8E4'); grad.addColorStop(1, '#87CEEB');
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
-  // Hills
-  ctx.fillStyle = '#5A7D4A';
-  ctx.beginPath(); ctx.moveTo(0, 180); ctx.quadraticCurveTo(120, 100, 240, 160); ctx.quadraticCurveTo(360, 120, GAME_W, 170); ctx.lineTo(GAME_W, GAME_H); ctx.lineTo(0, GAME_H); ctx.fill();
-  // Water
-  ctx.fillStyle = '#3A6B8C';
-  ctx.fillRect(0, GAME_H - 50, GAME_W, 50);
-  // Golden Gate Bridge
-  ctx.fillStyle = '#C0392B';
-  // Towers
-  ctx.fillRect(140, 40, 8, 140);
-  ctx.fillRect(300, 40, 8, 140);
-  // Road deck
-  ctx.fillRect(100, 130, 250, 8);
-  // Cables
-  ctx.strokeStyle = '#C0392B'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(144, 45); ctx.quadraticCurveTo(222, 115, 304, 45); ctx.stroke();
-  // Ground
-  ctx.fillStyle = '#5A7D4A';
-  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
-}
-
-function drawBerlin(ctx) {
-  // Overcast sky
-  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
-  grad.addColorStop(0, '#8899AA'); grad.addColorStop(1, '#AABBCC');
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
-  // Buildings
-  ctx.fillStyle = '#6A6A6A';
-  for (let x = 0; x < GAME_W; x += 35) {
-    const h = 30 + Math.random() * 50;
-    ctx.fillRect(x, GAME_H - h - 30, 30, h);
-  }
-  // Brandenburg Gate
-  const gx = 200, gb = GAME_H - 30;
-  ctx.fillStyle = '#D4C5A0';
-  // Columns
-  for (let i = 0; i < 6; i++) { ctx.fillRect(gx + i * 14, gb - 70, 8, 70); }
-  // Top beam
-  ctx.fillRect(gx - 2, gb - 75, 86, 8);
-  // Quadriga
-  ctx.fillStyle = '#B8A060';
-  ctx.fillRect(gx + 25, gb - 88, 30, 13);
-  ctx.fillRect(gx + 35, gb - 95, 10, 7);
-  // Ground
-  ctx.fillStyle = '#7A7A6A';
-  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
-}
-
-function drawTokyo(ctx) {
-  // Dusk sky
-  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
-  grad.addColorStop(0, '#2B1055'); grad.addColorStop(0.4, '#D65DB1'); grad.addColorStop(0.7, '#FF6F61'); grad.addColorStop(1, '#FFC75F');
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
-  // City skyline
-  ctx.fillStyle = '#1A1A2E';
-  for (let x = 0; x < GAME_W; x += 20) {
-    const h = 30 + Math.random() * 60;
-    ctx.fillRect(x, GAME_H - h - 30, 16, h);
-    // Lit windows
-    ctx.fillStyle = '#FFE066';
-    for (let wy = GAME_H - h - 25; wy < GAME_H - 35; wy += 6) {
-      if (Math.random() > 0.3) ctx.fillRect(x + 3, wy, 2, 3);
-      if (Math.random() > 0.3) ctx.fillRect(x + 8, wy, 2, 3);
-      if (Math.random() > 0.3) ctx.fillRect(x + 13, wy, 2, 3);
-    }
-    ctx.fillStyle = '#1A1A2E';
-  }
-  // Tokyo Tower
-  const tx = 100, tb = GAME_H - 30;
-  ctx.fillStyle = '#FF4444';
-  ctx.beginPath(); ctx.moveTo(tx, 15); ctx.lineTo(tx - 25, tb); ctx.lineTo(tx - 20, tb); ctx.lineTo(tx, 45); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(tx, 15); ctx.lineTo(tx + 25, tb); ctx.lineTo(tx + 20, tb); ctx.lineTo(tx, 45); ctx.fill();
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(tx - 18, 70, 36, 4);
-  ctx.fillRect(tx - 22, 120, 44, 4);
-  ctx.fillRect(tx - 12, 45, 24, 3);
-  // Cherry blossom
-  ctx.fillStyle = '#FFB7C5';
-  for (let i = 0; i < 30; i++) {
-    ctx.beginPath(); ctx.arc(380 + Math.random() * 80, 60 + Math.random() * 80, 2, 0, Math.PI * 2); ctx.fill();
-  }
-  // Ground
-  ctx.fillStyle = '#2A2A3A';
-  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
-}
-
-function drawRio(ctx) {
-  // Bright blue sky
-  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
-  grad.addColorStop(0, '#1E90FF'); grad.addColorStop(0.6, '#87CEEB'); grad.addColorStop(1, '#E0F7FF');
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
-  // Clouds
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.beginPath(); ctx.arc(80, 40, 20, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(100, 35, 15, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(350, 50, 18, 0, Math.PI * 2); ctx.fill();
-  // Mountain (Corcovado)
-  ctx.fillStyle = '#2E8B57';
-  ctx.beginPath(); ctx.moveTo(280, GAME_H - 30); ctx.lineTo(350, 30); ctx.lineTo(420, GAME_H - 30); ctx.fill();
-  // Christ the Redeemer
-  ctx.fillStyle = '#E8E8E8';
-  ctx.fillRect(348, 18, 4, 14); // body
-  ctx.fillRect(338, 22, 24, 4); // arms
-  ctx.fillRect(348, 14, 4, 5);  // head
-  // Beach
-  ctx.fillStyle = '#F4E3B2';
-  ctx.fillRect(0, GAME_H - 40, GAME_W, 10);
-  // Ocean
-  ctx.fillStyle = '#1E90FF';
-  ctx.fillRect(0, GAME_H - 50, 280, 20);
-  // Ground
-  ctx.fillStyle = '#6B8E5A';
-  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
-}
-
-function drawNewYork(ctx) {
-  // Sunset sky
-  const grad = ctx.createLinearGradient(0, 0, 0, GAME_H);
-  grad.addColorStop(0, '#FF6B35'); grad.addColorStop(0.4, '#FFA07A'); grad.addColorStop(1, '#FFD700');
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, GAME_W, GAME_H);
-  // Manhattan skyline
-  ctx.fillStyle = '#2C2C2C';
-  const heights = [80, 60, 100, 70, 130, 90, 75, 110, 65, 85, 95, 55, 120, 70, 80, 60];
-  for (let i = 0; i < heights.length; i++) {
-    ctx.fillRect(i * 30, GAME_H - heights[i] - 30, 26, heights[i]);
-  }
-  // Empire State-ish
-  ctx.fillRect(130, GAME_H - 160, 20, 130);
-  ctx.fillRect(135, GAME_H - 175, 10, 15);
-  ctx.fillRect(138, GAME_H - 185, 4, 10);
-  // Windows
-  ctx.fillStyle = '#FFE066';
-  for (let i = 0; i < heights.length; i++) {
-    for (let wy = GAME_H - heights[i] - 25; wy < GAME_H - 35; wy += 6) {
-      for (let wx = i * 30 + 3; wx < i * 30 + 23; wx += 5) {
-        if (Math.random() > 0.3) ctx.fillRect(wx, wy, 2, 3);
-      }
-    }
-  }
-  // Water
-  ctx.fillStyle = '#3A5F8A';
-  ctx.fillRect(0, GAME_H - 40, GAME_W, 10);
-  // Ground
-  ctx.fillStyle = '#5A5A5A';
-  ctx.fillRect(0, GAME_H - 30, GAME_W, 30);
-}
+// Background textures are now loaded as PNGs from assets/backgrounds/
 
 function generateShadowTexture(scene) {
   const c = document.createElement('canvas');
@@ -920,6 +720,13 @@ class AIController {
 class BootScene extends Phaser.Scene {
   constructor() { super('BootScene'); }
 
+  preload() {
+    // Load background images
+    COURTS.forEach(c => {
+      this.load.image('bg_' + c.key, 'assets/backgrounds/' + c.key + '.png');
+    });
+  }
+
   create() {
     sfx.init();
     GameState.isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
@@ -933,7 +740,6 @@ class BootScene extends Phaser.Scene {
     });
     COURTS.forEach(c => {
       generateCourtTexture(this, 'court_' + c.key, c.color, c.paint);
-      generateBackgroundTexture(this, c);
     });
     generateShadowTexture(this);
     generateHoopTexture(this);

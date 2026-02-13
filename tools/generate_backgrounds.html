@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Hoops Background Generator</title>
+<style>
+body { background: #111; color: #fff; font-family: monospace; padding: 20px; }
+canvas { border: 1px solid #444; margin: 10px; image-rendering: pixelated; }
+.row { display: flex; flex-wrap: wrap; gap: 20px; }
+.card { text-align: center; }
+.card h3 { margin: 5px 0; color: #FFD700; }
+button { background: #FFD700; color: #000; border: none; padding: 6px 16px; cursor: pointer; font-family: monospace; margin: 4px; }
+button:hover { background: #FFA500; }
+#controls { margin-bottom: 20px; }
+</style>
+</head>
+<body>
+<h1>Hoops Pixel-Art Background Generator</h1>
+<div id="controls">
+  <button onclick="generateAll()">Generate All</button>
+  <button onclick="downloadAll()">Download All PNGs</button>
+</div>
+<div id="gallery" class="row"></div>
+
+<script>
+const W = 480, H = 270;
+
+// Pixel-art helper: no anti-aliasing
+function setupCtx(ctx) {
+  ctx.imageSmoothingEnabled = false;
+}
+
+// Dithered gradient fill (alternating pixel rows for retro look)
+function ditherGradient(ctx, y0, y1, colors) {
+  // colors: array of {y: 0-1, r, g, b}
+  for (let y = y0; y < y1; y++) {
+    const t = (y - y0) / (y1 - y0);
+    // Find two surrounding color stops
+    let c0 = colors[0], c1 = colors[colors.length - 1];
+    for (let i = 0; i < colors.length - 1; i++) {
+      if (t >= colors[i].y && t <= colors[i + 1].y) { c0 = colors[i]; c1 = colors[i + 1]; break; }
+    }
+    const lt = (c0.y === c1.y) ? 0 : (t - c0.y) / (c1.y - c0.y);
+    const r = Math.round(c0.r + (c1.r - c0.r) * lt);
+    const g = Math.round(c0.g + (c1.g - c0.g) * lt);
+    const b = Math.round(c0.b + (c1.b - c0.b) * lt);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(0, y, W, 1);
+  }
+}
+
+// Draw pixel rect helper
+function px(ctx, x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
+}
+
+// Draw windows on a building
+function drawWindows(ctx, bx, by, bw, bh, winColor, offColor, spacing, winW, winH) {
+  for (let wy = by + 4; wy < by + bh - 4; wy += spacing) {
+    for (let wx = bx + 3; wx < bx + bw - 3; wx += spacing) {
+      const lit = Math.random() > 0.3;
+      px(ctx, wx, wy, winW, winH, lit ? winColor : offColor);
+    }
+  }
+}
+
+// ============================================================
+// PARIS
+// ============================================================
+function drawParis(ctx) {
+  setupCtx(ctx);
+  // Sky - warm sunset
+  ditherGradient(ctx, 0, H, [
+    { y: 0, r: 255, g: 140, b: 80 },
+    { y: 0.3, r: 255, g: 180, b: 130 },
+    { y: 0.6, r: 220, g: 200, b: 180 },
+    { y: 1, r: 180, g: 200, b: 160 }
+  ]);
+
+  // Distant buildings (far layer - muted)
+  const farColor = '#8B7355';
+  const farRoof = '#6B5B45';
+  for (let x = 0; x < W; x += 22) {
+    const h = 25 + ((x * 7 + 13) % 30);
+    const by = H - 50 - h;
+    px(ctx, x, by, 20, h + 10, farColor);
+    // Mansard roof
+    px(ctx, x - 1, by - 3, 22, 3, farRoof);
+    px(ctx, x + 2, by - 5, 16, 2, farRoof);
+    // Tiny windows
+    for (let wy = by + 5; wy < by + h; wy += 7) {
+      for (let wx = x + 2; wx < x + 18; wx += 5) {
+        px(ctx, wx, wy, 2, 3, Math.random() > 0.4 ? '#FFE4A0' : '#7A6A50');
+      }
+    }
+  }
+
+  // Mid-layer buildings
+  const midColor = '#6B5135';
+  for (let x = 5; x < W; x += 28) {
+    const h = 35 + ((x * 11 + 7) % 35);
+    const by = H - 45 - h;
+    px(ctx, x, by, 24, h + 15, midColor);
+    px(ctx, x - 1, by - 3, 26, 4, '#5A4030');
+    px(ctx, x + 3, by - 6, 18, 3, '#5A4030');
+    // Chimneys
+    if ((x * 3) % 5 < 2) px(ctx, x + 8, by - 12, 3, 6, '#5A4030');
+    // Windows
+    for (let wy = by + 5; wy < by + h + 5; wy += 6) {
+      for (let wx = x + 3; wx < x + 21; wx += 5) {
+        const lit = Math.random() > 0.3;
+        px(ctx, wx, wy, 2, 3, lit ? '#FFD080' : '#4A3A28');
+      }
+    }
+  }
+
+  // Near buildings
+  const nearColor = '#4A3728';
+  for (let x = -2; x < W; x += 32) {
+    const h = 40 + ((x * 13 + 3) % 40);
+    const by = H - 38 - h;
+    px(ctx, x, by, 28, h + 20, nearColor);
+    // Mansard roof detail
+    px(ctx, x - 1, by - 4, 30, 4, '#3A2A1C');
+    px(ctx, x + 4, by - 7, 20, 3, '#3A2A1C');
+    // Windows - larger
+    for (let wy = by + 6; wy < by + h + 8; wy += 7) {
+      for (let wx = x + 3; wx < x + 25; wx += 6) {
+        const lit = Math.random() > 0.25;
+        px(ctx, wx, wy, 3, 4, lit ? '#FFE4A0' : '#2A1E14');
+      }
+    }
+    // Doors
+    px(ctx, x + 11, by + h + 10, 6, 8, '#2A1E14');
+  }
+
+  // Eiffel Tower (detailed, right-center)
+  const tx = 160, tBase = H - 38;
+  const tColor = '#5C4033';
+  const tLight = '#7A6050';
+  // Main legs - left
+  for (let y = 0; y < tBase - 12; y++) {
+    const t = y / (tBase - 12);
+    const spread = t * 32;
+    px(ctx, tx - spread - 3, y + 12, 4, 1, tColor);
+  }
+  // Main legs - right
+  for (let y = 0; y < tBase - 12; y++) {
+    const t = y / (tBase - 12);
+    const spread = t * 32;
+    px(ctx, tx + spread - 1, y + 12, 4, 1, tColor);
+  }
+  // Cross braces
+  for (let i = 0; i < 5; i++) {
+    const y = 45 + i * 35;
+    const t = y / (tBase - 12);
+    const spread = t * 32;
+    px(ctx, tx - spread, y, spread * 2, 3, tColor);
+    // Lattice detail
+    px(ctx, tx - spread + 2, y, spread * 2 - 4, 1, tLight);
+  }
+  // Observation decks
+  px(ctx, tx - 22, 75, 44, 5, tColor);
+  px(ctx, tx - 14, 48, 28, 4, tColor);
+  px(ctx, tx - 8, 28, 16, 3, tColor);
+  // Antenna
+  px(ctx, tx - 1, 2, 2, 10, tColor);
+  px(ctx, tx, 0, 1, 3, tLight);
+
+  // Small clouds
+  const cloudColor = 'rgba(255,200,160,0.5)';
+  for (const [cx, cy] of [[60, 30], [320, 45], [420, 25]]) {
+    px(ctx, cx, cy, 18, 5, cloudColor);
+    px(ctx, cx + 3, cy - 3, 12, 3, cloudColor);
+    px(ctx, cx + 6, cy - 5, 6, 2, cloudColor);
+  }
+
+  // Tree line
+  const treeGreen = '#4A6B3A';
+  const treeDark = '#3A5A2A';
+  for (let x = 0; x < W; x += 8) {
+    const th = 6 + ((x * 7) % 5);
+    px(ctx, x, H - 38 - th, 7, th, treeGreen);
+    px(ctx, x + 1, H - 38 - th - 2, 5, 3, treeDark);
+  }
+
+  // Ground
+  px(ctx, 0, H - 38, W, 38, '#6B8E5A');
+  // Cobblestone hint
+  for (let x = 0; x < W; x += 6) {
+    px(ctx, x, H - 38, 5, 2, '#7A9E6A');
+  }
+}
+
+// ============================================================
+// SAN FRANCISCO
+// ============================================================
+function drawSanFrancisco(ctx) {
+  setupCtx(ctx);
+  // Foggy sky
+  ditherGradient(ctx, 0, H, [
+    { y: 0, r: 140, g: 165, b: 190 },
+    { y: 0.4, r: 175, g: 195, b: 210 },
+    { y: 0.7, r: 200, g: 215, b: 225 },
+    { y: 1, r: 160, g: 190, b: 210 }
+  ]);
+
+  // Distant hills
+  for (let x = 0; x < W; x++) {
+    const h1 = Math.sin(x * 0.012) * 25 + Math.sin(x * 0.025) * 15 + 100;
+    px(ctx, x, h1, 1, H - h1, '#6A9A5A');
+  }
+  // Fog wisps over distant hills
+  for (let x = 0; x < W; x += 3) {
+    const fy = 85 + Math.sin(x * 0.03) * 10;
+    px(ctx, x, fy, 3, 2, 'rgba(200,215,225,0.5)');
+  }
+
+  // Mid hills
+  for (let x = 0; x < W; x++) {
+    const h2 = Math.sin(x * 0.008 + 1) * 20 + Math.sin(x * 0.02 + 2) * 12 + 130;
+    px(ctx, x, h2, 1, H - h2, '#5A8A4A');
+  }
+
+  // Bay water
+  px(ctx, 0, H - 65, W, 35, '#3A6B8C');
+  // Wave highlights
+  for (let x = 0; x < W; x += 8) {
+    const wy = H - 65 + 5 + ((x * 3) % 25);
+    px(ctx, x, wy, 5, 1, '#4A7B9C');
+    px(ctx, x + 2, wy + 8, 4, 1, '#4A7B9C');
+  }
+
+  // Golden Gate Bridge
+  const bridgeRed = '#C0392B';
+  const bridgeDark = '#962D22';
+  // Road deck
+  px(ctx, 80, 140, 280, 6, bridgeRed);
+  px(ctx, 80, 146, 280, 2, bridgeDark);
+  // Left tower
+  px(ctx, 140, 40, 7, 108, bridgeRed);
+  px(ctx, 138, 40, 2, 108, bridgeDark);
+  // Tower cross beams
+  px(ctx, 136, 60, 13, 3, bridgeRed);
+  px(ctx, 136, 90, 13, 3, bridgeRed);
+  px(ctx, 136, 120, 13, 3, bridgeRed);
+  // Right tower
+  px(ctx, 295, 40, 7, 108, bridgeRed);
+  px(ctx, 293, 40, 2, 108, bridgeDark);
+  px(ctx, 291, 60, 13, 3, bridgeRed);
+  px(ctx, 291, 90, 13, 3, bridgeRed);
+  px(ctx, 291, 120, 13, 3, bridgeRed);
+  // Main cables (parabolic)
+  for (let x = 140; x <= 298; x++) {
+    const t = (x - 140) / (298 - 140);
+    const sag = 80 * (t - 0.5) * (t - 0.5) * 4 - 80 + 42;
+    const cy = 40 + sag * 0.6;
+    px(ctx, x, cy, 1, 2, bridgeRed);
+  }
+  // Suspender cables
+  for (let x = 150; x < 295; x += 10) {
+    const t = (x - 140) / (298 - 140);
+    const sag = 80 * (t - 0.5) * (t - 0.5) * 4 - 80 + 42;
+    const cy = 40 + sag * 0.6;
+    for (let y = cy; y < 140; y += 2) {
+      px(ctx, x, y, 1, 1, bridgeDark);
+    }
+  }
+
+  // Near hills (foreground)
+  for (let x = 0; x < W; x++) {
+    const h3 = Math.sin(x * 0.015 + 3) * 10 + H - 35;
+    px(ctx, x, h3, 1, H - h3, '#4A7A3A');
+  }
+
+  // Ground
+  px(ctx, 0, H - 30, W, 30, '#5A8A4A');
+}
+
+// ============================================================
+// BERLIN
+// ============================================================
+function drawBerlin(ctx) {
+  setupCtx(ctx);
+  // Overcast sky
+  ditherGradient(ctx, 0, H, [
+    { y: 0, r: 120, g: 135, b: 155 },
+    { y: 0.3, r: 140, g: 155, b: 170 },
+    { y: 0.6, r: 160, g: 170, b: 185 },
+    { y: 1, r: 150, g: 160, b: 170 }
+  ]);
+
+  // Low cloud layer
+  for (let x = 0; x < W; x += 4) {
+    const cy = 20 + Math.sin(x * 0.02) * 8;
+    px(ctx, x, cy, 4, 3, 'rgba(170,180,195,0.4)');
+  }
+
+  // TV Tower (Fernsehturm) - background
+  const tvx = 380;
+  px(ctx, tvx, 8, 2, 180, '#8A8A8A');
+  // Sphere
+  for (let dy = -6; dy <= 6; dy++) {
+    const w = Math.round(Math.sqrt(36 - dy * dy) * 2);
+    px(ctx, tvx + 1 - w / 2, 65 + dy, w, 1, '#A0A0A0');
+  }
+  px(ctx, tvx - 4, 62, 10, 2, '#B0B0B0');
+  // Antenna
+  px(ctx, tvx, 2, 1, 8, '#999');
+
+  // Far buildings
+  for (let x = 0; x < W; x += 24) {
+    const h = 30 + ((x * 11 + 5) % 40);
+    const by = H - 35 - h;
+    px(ctx, x, by, 20, h, '#7A7A7A');
+    drawWindows(ctx, x, by, 20, h, '#CCCCAA', '#5A5A5A', 5, 2, 2);
+  }
+
+  // Mid buildings
+  for (let x = 8; x < W; x += 30) {
+    const h = 40 + ((x * 7 + 13) % 45);
+    const by = H - 33 - h;
+    const isModern = (x % 60) < 30;
+    px(ctx, x, by, 26, h, isModern ? '#6A6A6A' : '#9A9080');
+    if (!isModern) {
+      // Classical cornice
+      px(ctx, x - 1, by - 2, 28, 3, '#B0A090');
+    }
+    drawWindows(ctx, x, by, 26, h, '#DDDDBB', '#4A4A4A', 6, 2, 3);
+  }
+
+  // Brandenburg Gate
+  const gx = 180, gBase = H - 33;
+  const stoneColor = '#D4C5A0';
+  const stoneDark = '#B0A080';
+  // Platform
+  px(ctx, gx - 5, gBase - 2, 90, 4, stoneDark);
+  // 6 columns
+  for (let i = 0; i < 6; i++) {
+    px(ctx, gx + i * 14 + 2, gBase - 68, 6, 68, stoneColor);
+    px(ctx, gx + i * 14 + 1, gBase - 68, 1, 68, stoneDark);
+  }
+  // Entablature (top beam)
+  px(ctx, gx - 2, gBase - 73, 86, 6, stoneColor);
+  px(ctx, gx - 3, gBase - 75, 88, 3, stoneDark);
+  // Attic
+  px(ctx, gx + 5, gBase - 82, 72, 7, stoneColor);
+  // Quadriga (chariot on top)
+  px(ctx, gx + 28, gBase - 92, 26, 10, '#B8A060');
+  px(ctx, gx + 36, gBase - 98, 10, 6, '#B8A060');
+  // Horses
+  px(ctx, gx + 22, gBase - 90, 8, 5, '#A89050');
+  px(ctx, gx + 52, gBase - 90, 8, 5, '#A89050');
+
+  // Bare trees
+  for (const tx of [40, 130, 350, 440]) {
+    px(ctx, tx + 2, H - 55, 2, 20, '#5A4A3A');
+    px(ctx, tx, H - 58, 6, 3, '#6A5A4A');
+    px(ctx, tx - 2, H - 62, 3, 2, '#5A4A3A');
+    px(ctx, tx + 5, H - 60, 3, 2, '#5A4A3A');
+  }
+
+  // Ground
+  px(ctx, 0, H - 33, W, 33, '#7A7A6A');
+  // Pavement lines
+  for (let x = 0; x < W; x += 12) {
+    px(ctx, x, H - 33, 1, 33, '#6A6A5A');
+  }
+}
+
+// ============================================================
+// TOKYO
+// ============================================================
+function drawTokyo(ctx) {
+  setupCtx(ctx);
+  // Dusk sky - vibrant
+  ditherGradient(ctx, 0, H, [
+    { y: 0, r: 30, g: 15, b: 70 },
+    { y: 0.25, r: 80, g: 30, b: 100 },
+    { y: 0.5, r: 180, g: 70, b: 140 },
+    { y: 0.75, r: 230, g: 110, b: 90 },
+    { y: 1, r: 255, g: 180, b: 80 }
+  ]);
+
+  // Stars
+  const starPositions = [[30,12],[85,25],[150,8],[210,30],[280,15],[340,5],[400,22],[450,10],[50,40],[380,38]];
+  starPositions.forEach(([sx, sy]) => px(ctx, sx, sy, 1, 1, '#FFFFFF'));
+
+  // Far skyline (dark silhouette)
+  for (let x = 0; x < W; x += 14) {
+    const h = 35 + ((x * 13 + 7) % 55);
+    px(ctx, x, H - 35 - h, 12, h + 5, '#1A1A2E');
+    // Sparse windows
+    for (let wy = H - 30 - h; wy < H - 35; wy += 5) {
+      for (let wx = x + 2; wx < x + 10; wx += 4) {
+        if (Math.random() > 0.5) px(ctx, wx, wy, 1, 2, '#FFE066');
+      }
+    }
+  }
+
+  // Mid skyline (denser)
+  for (let x = 3; x < W; x += 18) {
+    const h = 45 + ((x * 11 + 3) % 60);
+    px(ctx, x, H - 33 - h, 15, h + 5, '#12122A');
+    // Many windows
+    for (let wy = H - 28 - h; wy < H - 33; wy += 4) {
+      for (let wx = x + 2; wx < x + 13; wx += 3) {
+        if (Math.random() > 0.3) {
+          const neon = Math.random() > 0.85;
+          px(ctx, wx, wy, 2, 2, neon ? ['#FF69B4','#00BFFF','#39FF14'][Math.floor(Math.random()*3)] : '#FFE066');
+        }
+      }
+    }
+    // Neon signs on some buildings
+    if (Math.random() > 0.6) {
+      const ny = H - 33 - h + 8;
+      const nc = ['#FF1493','#00CED1','#FF4500','#7FFF00'][Math.floor(Math.random()*4)];
+      px(ctx, x + 2, ny, 10, 4, nc);
+    }
+  }
+
+  // Near buildings
+  for (let x = -5; x < W; x += 22) {
+    const h = 55 + ((x * 17 + 11) % 50);
+    px(ctx, x, H - 30 - h, 19, h + 5, '#0D0D20');
+    for (let wy = H - 25 - h; wy < H - 30; wy += 5) {
+      for (let wx = x + 2; wx < x + 17; wx += 4) {
+        if (Math.random() > 0.25) px(ctx, wx, wy, 2, 3, '#FFE066');
+      }
+    }
+  }
+
+  // Tokyo Tower (left side, detailed)
+  const tx = 85, tBase = H - 30;
+  const tRed = '#FF4444';
+  const tWhite = '#FFFFFF';
+  // Main structure - pixel by pixel legs
+  for (let y = 15; y < tBase; y++) {
+    const t = (y - 15) / (tBase - 15);
+    const spread = t * 22;
+    const isWhiteBand = ((y - 15) % 16) < 4;
+    const col = isWhiteBand ? tWhite : tRed;
+    px(ctx, tx - spread - 2, y, 3, 1, col);
+    px(ctx, tx + spread, y, 3, 1, col);
+  }
+  // Cross braces
+  for (let i = 0; i < 7; i++) {
+    const y = 40 + i * 25;
+    const t = (y - 15) / (tBase - 15);
+    const spread = t * 22;
+    const isWhite = (i % 2) === 0;
+    px(ctx, tx - spread, y, spread * 2, 2, isWhite ? tWhite : tRed);
+  }
+  // Observation decks
+  px(ctx, tx - 16, 80, 32, 4, tRed);
+  px(ctx, tx - 10, 50, 20, 3, tWhite);
+  // Antenna
+  px(ctx, tx - 1, 5, 2, 10, tRed);
+  px(ctx, tx, 2, 1, 4, tWhite);
+
+  // Cherry blossom branch (top-right)
+  px(ctx, 360, 70, 80, 2, '#4A2A1A');
+  px(ctx, 360, 68, 2, 4, '#4A2A1A');
+  px(ctx, 400, 65, 2, 7, '#4A2A1A');
+  px(ctx, 430, 62, 2, 10, '#4A2A1A');
+  // Blossoms
+  const blossomColors = ['#FFB7C5', '#FF9AAE', '#FFCCD5', '#FF8FA3'];
+  for (let i = 0; i < 40; i++) {
+    const bx = 355 + Math.random() * 100;
+    const by = 52 + Math.random() * 25;
+    px(ctx, bx, by, 3, 3, blossomColors[Math.floor(Math.random() * 4)]);
+  }
+  // Falling petals
+  for (let i = 0; i < 8; i++) {
+    const px2 = 370 + Math.random() * 90;
+    const py = 80 + Math.random() * 60;
+    px(ctx, px2, py, 2, 2, '#FFB7C5');
+  }
+
+  // Ground - dark with light reflections
+  px(ctx, 0, H - 30, W, 30, '#1A1A2E');
+  for (let x = 0; x < W; x += 10) {
+    const rc = ['#FF1493','#FFE066','#00CED1','#FF4500'][Math.floor(Math.random()*4)];
+    px(ctx, x, H - 28, 4, 1, rc + '44');
+  }
+}
+
+// ============================================================
+// RIO
+// ============================================================
+function drawRio(ctx) {
+  setupCtx(ctx);
+  // Tropical sky
+  ditherGradient(ctx, 0, H, [
+    { y: 0, r: 30, g: 120, b: 220 },
+    { y: 0.4, r: 80, g: 170, b: 240 },
+    { y: 0.7, r: 140, g: 210, b: 250 },
+    { y: 1, r: 180, g: 230, b: 250 }
+  ]);
+
+  // Fluffy clouds
+  function drawCloud(cx, cy, w) {
+    px(ctx, cx, cy, w, 6, 'rgba(255,255,255,0.8)');
+    px(ctx, cx + 4, cy - 4, w - 8, 4, 'rgba(255,255,255,0.7)');
+    px(ctx, cx + 8, cy - 7, w - 16, 3, 'rgba(255,255,255,0.6)');
+    px(ctx, cx + 2, cy + 4, w - 4, 2, 'rgba(255,255,255,0.5)');
+  }
+  drawCloud(50, 35, 40);
+  drawCloud(200, 25, 30);
+  drawCloud(380, 40, 35);
+
+  // Distant mountains (left)
+  for (let x = 0; x < 200; x++) {
+    const mh = Math.sin(x * 0.02 + 1) * 20 + Math.sin(x * 0.01) * 30 + 120;
+    px(ctx, x, mh, 1, H - mh, '#3A8A5A');
+  }
+
+  // Sugarloaf Mountain (mid-left)
+  for (let x = 80; x < 180; x++) {
+    const t = (x - 80) / 100;
+    const mh = 80 - Math.sin(t * Math.PI) * 55;
+    px(ctx, x, mh, 1, H - mh, '#2E8B57');
+    if (mh < 60) px(ctx, x, mh, 1, 2, '#3A9B67'); // highlight
+  }
+
+  // Corcovado Mountain (right)
+  for (let x = 280; x < 430; x++) {
+    const t = (x - 280) / 150;
+    const peak = 30;
+    const mh = peak + (1 - Math.sin(t * Math.PI)) * 110;
+    px(ctx, x, mh, 1, H - mh, '#2E8B57');
+  }
+  // Mountain texture
+  for (let x = 300; x < 420; x += 4) {
+    const t = (x - 280) / 150;
+    const mh = 30 + (1 - Math.sin(t * Math.PI)) * 110;
+    px(ctx, x, mh + 5, 3, 4, '#268A4A');
+  }
+
+  // Christ the Redeemer
+  const cx = 355, cy = 28;
+  px(ctx, cx, cy + 4, 4, 16, '#E8E8E8'); // body
+  px(ctx, cx - 12, cy + 6, 28, 3, '#E8E8E8'); // arms
+  px(ctx, cx, cy, 4, 5, '#E8E8E8'); // head
+  px(ctx, cx + 1, cy - 1, 2, 2, '#D8D8D8'); // head top
+  // Robe folds
+  px(ctx, cx + 1, cy + 12, 2, 6, '#D0D0D0');
+
+  // Ocean
+  px(ctx, 0, H - 60, W, 25, '#1E90FF');
+  // Wave lines
+  for (let x = 0; x < W; x += 6) {
+    const wy = H - 58 + ((x * 3) % 18);
+    px(ctx, x, wy, 4, 1, '#3AA0FF');
+  }
+  // Foam
+  for (let x = 0; x < 280; x += 8) {
+    px(ctx, x, H - 37, 5, 1, '#FFFFFF');
+  }
+
+  // Beach
+  px(ctx, 0, H - 38, 280, 8, '#F4E3B2');
+  // Beach texture
+  for (let x = 0; x < 280; x += 5) {
+    px(ctx, x, H - 36, 2, 1, '#E8D8A2');
+  }
+
+  // Palm trees (foreground)
+  function drawPalm(px2, py) {
+    // Trunk
+    for (let y = py; y < H - 30; y++) {
+      const sway = Math.sin(y * 0.05) * 2;
+      px(ctx, px2 + sway, y, 3, 1, '#5A3A1A');
+    }
+    // Fronds
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      for (let d = 0; d < 20; d++) {
+        const fx = px2 + Math.cos(angle) * d;
+        const fy = py - 2 + Math.sin(angle) * d * 0.5 + d * 0.3;
+        px(ctx, fx, fy, 2, 1, d < 15 ? '#2A6A2A' : '#3A8A3A');
+      }
+    }
+  }
+  drawPalm(20, H - 85);
+  drawPalm(450, H - 75);
+
+  // Ground
+  px(ctx, 0, H - 30, W, 30, '#6B8E5A');
+}
+
+// ============================================================
+// NEW YORK
+// ============================================================
+function drawNewYork(ctx) {
+  setupCtx(ctx);
+  // Golden hour sky
+  ditherGradient(ctx, 0, H, [
+    { y: 0, r: 200, g: 80, b: 30 },
+    { y: 0.3, r: 240, g: 140, b: 60 },
+    { y: 0.5, r: 255, g: 190, b: 90 },
+    { y: 0.7, r: 255, g: 210, b: 130 },
+    { y: 1, r: 200, g: 180, b: 150 }
+  ]);
+
+  // Small clouds
+  for (const [cx, cy] of [[80, 30], [300, 20], [420, 40]]) {
+    px(ctx, cx, cy, 25, 4, 'rgba(255,200,150,0.5)');
+    px(ctx, cx + 5, cy - 3, 15, 3, 'rgba(255,200,150,0.4)');
+  }
+
+  // Manhattan skyline - far layer
+  const farBldg = '#3A3A3A';
+  for (let x = 0; x < W; x += 18) {
+    const h = 40 + ((x * 13 + 7) % 50);
+    px(ctx, x, H - 45 - h, 15, h, farBldg);
+    drawWindows(ctx, x, H - 45 - h, 15, h, '#FFE066', '#2A2A2A', 5, 1, 2);
+  }
+
+  // Mid layer buildings
+  for (let x = 5; x < W; x += 24) {
+    const h = 50 + ((x * 7 + 11) % 65);
+    px(ctx, x, H - 43 - h, 20, h + 3, '#2C2C2C');
+    // Art deco top
+    if (h > 80) {
+      px(ctx, x + 5, H - 43 - h - 5, 10, 5, '#2C2C2C');
+      px(ctx, x + 7, H - 43 - h - 8, 6, 3, '#2C2C2C');
+    }
+    drawWindows(ctx, x, H - 43 - h, 20, h, '#FFE066', '#1A1A1A', 5, 2, 2);
+  }
+
+  // Empire State Building (prominent)
+  const esx = 200, esBase = H - 40;
+  px(ctx, esx, esBase - 150, 22, 150, '#2C2C2C');
+  // Setbacks
+  px(ctx, esx + 4, esBase - 165, 14, 15, '#2C2C2C');
+  px(ctx, esx + 7, esBase - 175, 8, 10, '#2C2C2C');
+  // Antenna spire
+  px(ctx, esx + 10, esBase - 195, 2, 20, '#3C3C3C');
+  px(ctx, esx + 10, esBase - 200, 1, 8, '#4C4C4C');
+  // Art deco detail
+  px(ctx, esx - 1, esBase - 150, 24, 2, '#3C3C3C');
+  px(ctx, esx + 3, esBase - 165, 16, 2, '#3C3C3C');
+  // Many windows
+  for (let wy = esBase - 148; wy < esBase; wy += 4) {
+    for (let wx = esx + 2; wx < esx + 20; wx += 3) {
+      if (Math.random() > 0.2) px(ctx, wx, wy, 2, 2, '#FFE066');
+    }
+  }
+
+  // Freedom Tower (One WTC)
+  const wtcx = 320;
+  px(ctx, wtcx, esBase - 140, 16, 140, '#3A4A5A');
+  px(ctx, wtcx + 4, esBase - 155, 8, 15, '#3A4A5A');
+  px(ctx, wtcx + 6, esBase - 165, 4, 10, '#3A4A5A');
+  px(ctx, wtcx + 7, esBase - 175, 2, 10, '#4A5A6A');
+  // Glass reflection
+  for (let wy = esBase - 138; wy < esBase; wy += 3) {
+    px(ctx, wtcx + 1, wy, 14, 1, '#4A6A8A');
+  }
+
+  // Near layer buildings
+  for (let x = -3; x < W; x += 28) {
+    if (Math.abs(x - esx) < 30 || Math.abs(x - wtcx) < 20) continue;
+    const h = 60 + ((x * 19 + 5) % 55);
+    px(ctx, x, H - 38 - h, 24, h, '#222222');
+    drawWindows(ctx, x, H - 38 - h, 24, h, '#FFE066', '#111111', 5, 2, 2);
+  }
+
+  // East River
+  px(ctx, 0, H - 42, W, 12, '#2A4A6A');
+  // Reflections
+  for (let x = 0; x < W; x += 6) {
+    px(ctx, x, H - 40, 3, 1, '#FFD06650');
+    px(ctx, x + 2, H - 36, 2, 1, '#FFD06640');
+  }
+
+  // Ground/waterfront
+  px(ctx, 0, H - 30, W, 30, '#4A4A4A');
+  // Waterfront railing hint
+  for (let x = 0; x < W; x += 8) {
+    px(ctx, x, H - 30, 1, 3, '#5A5A5A');
+  }
+}
+
+// ============================================================
+// GALLERY & EXPORT
+// ============================================================
+const cities = [
+  { key: 'paris', name: 'Paris', draw: drawParis },
+  { key: 'san_francisco', name: 'San Francisco', draw: drawSanFrancisco },
+  { key: 'berlin', name: 'Berlin', draw: drawBerlin },
+  { key: 'tokyo', name: 'Tokyo', draw: drawTokyo },
+  { key: 'rio', name: 'Rio de Janeiro', draw: drawRio },
+  { key: 'new_york', name: 'New York', draw: drawNewYork },
+];
+
+const canvases = {};
+
+function generateAll() {
+  const gallery = document.getElementById('gallery');
+  gallery.innerHTML = '';
+  cities.forEach(city => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const h3 = document.createElement('h3');
+    h3.textContent = city.name;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.width = (W * 2) + 'px';
+    canvas.style.height = (H * 2) + 'px';
+    const ctx = canvas.getContext('2d');
+    city.draw(ctx);
+    canvases[city.key] = canvas;
+
+    const btn = document.createElement('button');
+    btn.textContent = 'Download ' + city.key + '.png';
+    btn.onclick = () => downloadPng(city.key);
+
+    card.appendChild(h3);
+    card.appendChild(canvas);
+    card.appendChild(btn);
+    gallery.appendChild(card);
+  });
+}
+
+function downloadPng(key) {
+  const canvas = canvases[key];
+  if (!canvas) return;
+  const a = document.createElement('a');
+  a.download = key + '.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+function downloadAll() {
+  cities.forEach(city => downloadPng(city.key));
+}
+
+// Auto-generate on load
+window.onload = generateAll;
+</script>
+</body>
+</html>

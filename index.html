@@ -982,7 +982,7 @@ class PlayerCustomizeScene extends Phaser.Scene {
 
       // Selection box
       if (selected) {
-        const box = this.add.rectangle(x, 120, 60, 80, 0xFFD700, 0).setStrokeStyle(2, 0xFFD700);
+        const box = this.add.rectangle(x, 130, 70, 110, 0xFFD700, 0).setStrokeStyle(2, 0xFFD700);
         g.add(box);
       }
 
@@ -1043,7 +1043,7 @@ class PlayerCustomizeScene extends Phaser.Scene {
     g.add(rightBtn);
 
     // Confirm button for touch
-    const confirmBtn = this.add.text(GAME_W / 2, 258, 'SELECT', {
+    const confirmBtn = this.add.text(GAME_W / 2, 245, 'SELECT', {
       fontSize: '12px', fontFamily: 'monospace', color: '#000', backgroundColor: '#FFD700',
       padding: { x: 8, y: 4 }
     }).setOrigin(0.5).setInteractive();
@@ -1140,7 +1140,7 @@ class CourtSelectScene extends Phaser.Scene {
     this.add.text(GAME_W - 20, 120, '>', { fontSize: '28px', fontFamily: 'monospace', color: '#FFD700' })
       .setOrigin(0.5).setInteractive().on('pointerdown', () => this.navigate(1));
 
-    const confirmBtn = this.add.text(GAME_W / 2, 258, 'PLAY', {
+    const confirmBtn = this.add.text(GAME_W / 2, 245, 'PLAY', {
       fontSize: '14px', fontFamily: 'monospace', color: '#000', backgroundColor: '#FFD700',
       padding: { x: 12, y: 4 }
     }).setOrigin(0.5).setInteractive();
@@ -2080,9 +2080,7 @@ class HUDScene extends Phaser.Scene {
     // Shot clock
     this.shotClockText = this.add.text(GAME_W / 2, 18, '12', { fontSize: '10px', fontFamily: 'monospace', color: '#FF0' , stroke: '#000', strokeThickness: 2 }).setOrigin(0.5, 0);
 
-    // Foul indicators
-    this.foulsA = this.add.text(10, 18, '', smallStyle);
-    this.foulsB = this.add.text(GAME_W - 10, 18, '', smallStyle).setOrigin(1, 0);
+
 
     // Listen for updates
     const gameScene = this.scene.get('GameScene');
@@ -2096,8 +2094,6 @@ class HUDScene extends Phaser.Scene {
     this.shotClockText.setText(GameState.shotClock.toString());
     if (GameState.shotClock <= 5) this.shotClockText.setColor('#FF0000');
     else this.shotClockText.setColor('#FFFF00');
-    this.foulsA.setText('F:' + GameState.teamAFouls);
-    this.foulsB.setText('F:' + GameState.teamBFouls);
   }
 }
 
@@ -2621,7 +2617,14 @@ const game = new Phaser.Game(config);
 
 // Register service worker for offline support (PWA)
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(function() {});
+  navigator.serviceWorker.register('./sw.js').then(function(reg) {
+    // Check for updates every 60 seconds
+    setInterval(function() { reg.update(); }, 60000);
+  }).catch(function() {});
+  // Reload when a new service worker takes control
+  navigator.serviceWorker.addEventListener('controllerchange', function() {
+    window.location.reload();
+  });
 }
 </script>
 </body>

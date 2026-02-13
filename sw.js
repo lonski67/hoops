@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hoops-v6';
+const CACHE_NAME = 'hoops-v7';
 const ASSETS = [
   './',
   './index.html',

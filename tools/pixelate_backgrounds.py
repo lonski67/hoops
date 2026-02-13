@@ -44,11 +44,11 @@ CITIES = [
     },
     {
         'key': 'tokyo',
-        # Tokyo cityscape at night with neon lights
-        'url': 'https://images.unsplash.com/photo-1536098561742-ca998e48cbcc?w=960&h=540&fit=crop',
+        # Shibuya 109 crossing at night — neon signs, bustling street
+        'url': 'https://images.unsplash.com/photo-1542051841857-5f90071e7989?w=960&h=540&fit=crop',
         'pixel_size': 3,
         'num_colors': 64,
-        'saturation': 1.4,
+        'saturation': 1.3,
     },
     {
         'key': 'rio',
@@ -59,8 +59,8 @@ CITIES = [
     },
     {
         'key': 'new_york',
-        # Manhattan skyline at sunset across the water
-        'url': 'https://images.unsplash.com/photo-1518235506717-e1ed3306a89b?w=960&h=540&fit=crop',
+        # Statue of Liberty with Manhattan skyline across the harbor
+        'url': 'https://images.unsplash.com/photo-1605130284535-11dd9eedc58a?w=960&h=540&fit=crop',
         'pixel_size': 3,
         'num_colors': 48,
         'saturation': 1.3,
